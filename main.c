@@ -18,7 +18,8 @@ double log2(double n){ //windows' math.h does not have log2 function
 #endif
 
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
-	long n; //number of elements for a specific test case
+	long height; //image height
+	long width; //image width
 	int p; //number of threads selected by the user
 	char print; //whether the user chose to print the sorted array
 } ProgramInfo;
@@ -94,19 +95,19 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 		dest[i] = src[i];
 }
 
-void writeToFile(){
+void writeToFile(char* encoded, long* size){
 
 
 }
 
-void manageProcessesWritingToFile(int rank){
+void manageProcessesWritingToFile(int* rank,char* encoded,long* size){
 	int count = 0;
-	while (count != rank){
+	while (count != *rank){
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
 	}
-	writeToFile();
+	writeToFile(encoded, size);
 	count++;
-	MPI_Bcast(&count,1,MPI_INT,rank,MPI_COMM_WORLD);
+	MPI_Bcast(&count,1,MPI_INT,*rank,MPI_COMM_WORLD);
 
 }
 
@@ -229,37 +230,40 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 
 	char filename[50];
 	int threads;
-	FILE* f;
+	FILE* f = NULL;
 	if (*argc != 3){ //validates number of arguments passed to executable, currently number of threads and file name
 		printf("Usage: %s <number of threads> <file name>\n",argv[0]);
 		fflush(stdout);
-		exit(0);
-	}
+//		exit(0);
+
+	} else {
 	
-	threads = strtol(argv[1], NULL, 10);
+		threads = strtol(argv[1], NULL, 10);
 
-	if ((threads == 0) || (threads != p_info->p) || (!((threads != 0) && ((threads & (threads - 1)) == 0)))){ //validates if number of threads passed as argument is power of two, which should be appropriate for reduce operation
-		printf("Number of processes is not valid or power of two!\n");
-		fflush(stdout);
-		exit(0);
-	}
+		if (threads == 0 || threads != p_info->p){ 
+			printf("Number of processes is not valid\n");
+			fflush(stdout);
+//			exit(0);
+		} else {
 
-	p_info->p = threads;
+//		p_info->p = threads;
 
-	strcpy(filename,argv[2]);
-	f = fopen(filename,"r");
-	if (f == NULL){ //check if the file inputted exists
-		printf("File not found!");
-		fflush(stdout);
-		exit(0);
+			strcpy(filename,argv[2]);
+			f = fopen(filename,"r");
+			if (f == NULL){ //check if the file inputted exists
+				printf("File not found!");
+				fflush(stdout);
+//				exit(0);
+			}
+		}
 	}
 	return f;
 
 }
 
 void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
-	long div = p_info->n / p_info->p;
-	long r = p_info->n % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
+	long div = p_info->height / p_info->p;
+	long r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
 	if (*rank < r){
 		*local_n = div + 1;
 		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
@@ -307,6 +311,27 @@ int encode (char *message, int size, int width, int height, char *output){
 	
 }
 
+char* readAndEncode(int* rank,long* local_n,char* filename,long* encodedSize){
+	FILE *input = NULL;
+	long bufferSize; 
+	char *buffer = NULL; 
+	char *encoded = NULL;
+	input = fopen(filename,"r");
+	if (input != NULL){
+		bufferSize = sizeof(char) * 3 * (*local_n);
+		buffer = (char *) malloc(bufferSize);
+		encoded = (char *) malloc(bufferSize * 2);
+		memset(buffer,'0',bufferSize);
+		memset(encoded,'0',bufferSize * 2);
+		fread(buffer,1,bufferSize,input);		
+		*encodedSize = encode(buffer,bufferSize,p_info->width,p_info->height,encoded);
+		encoded = (char*) realloc(encoded,sizeof(char) * *encodedSize);
+	} else {
+		printf("Could not reopen file for some reason\n");
+	}
+	return encoded;
+
+}
 
 int main(int argc, char *argv[]){
 
@@ -325,6 +350,9 @@ int main(int argc, char *argv[]){
 	double total = 0;
 	double max = 0;
 	int i;
+	long encodedSize = 0;
+	long dimensions[2];
+	char* encoded = NULL;
 
 	MPI_Init(NULL,NULL);
 
@@ -344,26 +372,36 @@ int main(int argc, char *argv[]){
 			read_header(&header,f);
 			print_header(&header);
 			fclose(f);
+			dimensions[0] = header.width;
+			dimensions[1] = header.height;
+		} else {
+			dimensions[0] = 0;
+			dimensions[1] = 0;
 		}
 	}
-
-	if (rank == 0){
-		output = fopen("output.bmp","a");
-		flock(fileno(output),LOCK_SH);
-		fwrite("lalala\n",1,7,output);
-		fflush(output);
-
-	}
-
-	MPI_Bcast(&(header.height),1,MPI_LONG,0,MPI_COMM_WORLD);	
-
-	p_info->n = header.height;
-
-	calculateLocalArray(&local_n,&my_first_i,&rank);
-
-	printf("rank: %d, my_first_i: %ld, local_n: %ld\n",rank,my_first_i,local_n);	
-
 	
+
+
+	MPI_Bcast(dimensions,2,MPI_LONG,0,MPI_COMM_WORLD);	
+
+	if (dimensions[0] != 0 && dimensions[1] != 0){
+
+
+		p_info->width = dimensions[0];
+		p_info->height = dimensions[1];
+
+		calculateLocalArray(&local_n,&my_first_i,&rank);
+
+		printf("rank: %d, my_first_i: %ld, local_n: %ld\n",rank,my_first_i,local_n);	
+
+		encoded = readAndEncode(&rank,&local_n,argv[2],&encodedSize);
+
+		if (encoded != NULL){
+			manageProcessesWritingToFile(&rank,encoded,&encodedSize);
+		} else {
+			printf("Could not encode for some reason\n");
+		}
+		
 
 
 /*
@@ -406,6 +444,7 @@ int main(int argc, char *argv[]){
 		if (rank == 0)
 			printf("Number of processes is not power of two!\n");
 	*/
+	}
 	MPI_Finalize();
 	return 0;
 }
