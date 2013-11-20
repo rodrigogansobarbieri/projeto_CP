@@ -94,6 +94,24 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 		dest[i] = src[i];
 }
 
+void writeToFile(){
+
+
+}
+
+void manageProcessesWritingToFile(int rank){
+	int count = 0;
+	while (count != rank){
+		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
+	}
+	writeToFile();
+	count++;
+	MPI_Bcast(&count,1,MPI_INT,rank,MPI_COMM_WORLD);
+
+}
+
+
+
 int* initialize(int *n,int *p, int *t,FILE *f,int *rank){ //all processes initialize here, process 0 reads input and broadcasts, other processes just receive the broadcast
 	int r;
 	int max = 0;
@@ -253,6 +271,7 @@ void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates
 	}
 }
 
+
 int encode (char *message, int size, int width, int height, char *output){
 	int i = 0,j = 0;
 	int count = 1;
@@ -288,11 +307,11 @@ int encode (char *message, int size, int width, int height, char *output){
 	
 }
 
-void 
 
 int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
+	FILE *output = NULL;
 	char filename[50];
 	char print = 'Y';
 	int rank,p,t;
@@ -326,6 +345,14 @@ int main(int argc, char *argv[]){
 			print_header(&header);
 			fclose(f);
 		}
+	}
+
+	if (rank == 0){
+		output = fopen("output.bmp","a");
+		flock(fileno(output),LOCK_SH);
+		fwrite("lalala\n",1,7,output);
+		fflush(output);
+
 	}
 
 	MPI_Bcast(&(header.height),1,MPI_LONG,0,MPI_COMM_WORLD);	
