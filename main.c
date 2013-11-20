@@ -95,9 +95,21 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 		dest[i] = src[i];
 }
 
-void writeToFile(char* encoded, long* size){
+void writeToFile(char* encoded, long* size, int* rank){
 
+	FILE* compresedFile = NULL;
+	char FileName[30]={'\0'};
 
+	sprintf(FileName, "comp_%i.grg", *rank);
+
+	compresedFile = fopen(FileName, "ab+");
+	
+	if(NULL != compresedFile){
+		fseek(compresedFile, 0, SEEK_END);
+		fwrite(encoded, sizeof(char), *size, compresedFile);
+	}
+
+	fclose(compresedFile);
 }
 
 void manageProcessesWritingToFile(int* rank,char* encoded,long* size){
