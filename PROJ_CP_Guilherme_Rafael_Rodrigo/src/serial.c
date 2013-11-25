@@ -87,12 +87,12 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 		dest[i] = src[i];
 }
 
-void writeToFile(char* encoded, long* size, int* rank){
+void writeToFile(char* encoded, long* size){
 
 	FILE* compresedFile = NULL;
 	char FileName[30]={'\0'};
 
-	sprintf(FileName, "comp_%i.grg", *rank);
+	sprintf(FileName, "compressed.grg");
 
 	compresedFile = fopen(FileName, "ab+");
 	
@@ -104,16 +104,9 @@ void writeToFile(char* encoded, long* size, int* rank){
 	fclose(compresedFile);
 }
 
-void manageProcessesWritingToFile(int* rank,char* encoded,long* size){
-/*
-	int count = 0;
-	while (count != *rank){
-		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
-	}
+void manageProcessesWritingToFile(char* encoded,long* size){
+
 	writeToFile(encoded, size);
-	count++;
-	MPI_Bcast(&count,1,MPI_INT,*rank,MPI_COMM_WORLD);
-	*/
 }
 
 
@@ -149,6 +142,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 			fflush(stdout);
 		}
 	}
+	
 	return f;
 }
 
@@ -262,11 +256,11 @@ int main(int argc, char *argv[])
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 
-		encoded = readAndEncode(&local_n,argv[1],&encodedSize);
+		encoded = readAndEncode(&p_info->width,argv[1],&encodedSize);
 
 		if (encoded != NULL)
 		{
-			manageProcessesWritingToFile(&rank,encoded,&encodedSize);
+			manageProcessesWritingToFile(encoded,&encodedSize);
 		} 
 		else 
 		{
