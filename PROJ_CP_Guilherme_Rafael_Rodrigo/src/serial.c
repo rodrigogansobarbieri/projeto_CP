@@ -13,6 +13,7 @@
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
 	long height; //image height
 	long width; //image width
+	int p; //number of threads selected by the user
 	char print; //whether the user chose to print the sorted array
 } ProgramInfo;
 
@@ -89,19 +90,19 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 
 void writeToFile(char* encoded, long* size){
 
-	FILE* compresedFile = NULL;
+	FILE* compressedFile = NULL;
 	char FileName[30]={'\0'};
 
 	sprintf(FileName, "compressed.grg");
 
-	compresedFile = fopen(FileName, "ab+");
+	compressedFile = fopen(FileName, "ab+");
 	
-	if(NULL != compresedFile){
-		fseek(compresedFile, 0, SEEK_END);
-		fwrite(encoded, sizeof(char), *size, compresedFile);
+	if(NULL != compressedFile){
+		fseek(compressedFile, 0, SEEK_END);
+		fwrite(encoded, sizeof(char), *size, compressedFile);
 	}
 
-	fclose(compresedFile);
+	fclose(compressedFile);
 }
 
 void manageProcessesWritingToFile(char* encoded,long* size){
@@ -184,21 +185,35 @@ int encode (char *message, int size, int width, int height, char *output){
 	
 }
 
-char* readAndEncode(long* local_n,char* filename,long* encodedSize){
+void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
+	long div = p_info->height / p_info->p;
+	long r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
+	if (*rank < r){
+		*local_n = div + 1;
+		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
+			*my_first_i = *rank * *local_n;
+	} else {
+		*local_n = div;
+		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
+			*my_first_i = *rank * *local_n + r;
+	}
+}
+
+char* readAndEncode(long* local_n,char* filename,long* my_first_i,long* encodedSize){
 	FILE *input = NULL;
 	long bufferSize; 
 	char *buffer = NULL; 
 	char *encoded = NULL;
 	input = fopen(filename,"r");
-	if (input != NULL)
-	{
-		bufferSize = sizeof(char) * 3 * (*local_n);
+	fseek(input,54 + *my_first_i,SEEK_SET);
+	if (input != NULL){
+		bufferSize = sizeof(char) * 3 * (p_info->width);
 		buffer = (char *) malloc(bufferSize);
 		encoded = (char *) malloc(bufferSize * 2);
 		memset(buffer,'0',bufferSize);
 		memset(encoded,'0',bufferSize * 2);
 		fread(buffer,1,bufferSize,input);		
-		*encodedSize = encode(buffer,bufferSize,p_info->width,p_info->height,encoded);
+		*encodedSize = encode(buffer,bufferSize,p_info->width,*local_n,encoded);
 		encoded = (char*) realloc(encoded,sizeof(char) * *encodedSize);
 	} 
 	else {
@@ -233,6 +248,8 @@ int main(int argc, char *argv[])
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo));//allocates ProgramInfo structure
 
+	p_info->p = 1;
+
 	initialize_header(&header);
 
 	
@@ -256,7 +273,9 @@ int main(int argc, char *argv[])
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 
-		encoded = readAndEncode(&p_info->height,argv[1],&encodedSize);
+		calculateLocalArray(&local_n,&my_first_i,0);
+
+		encoded = readAndEncode(&p_info->height,argv[1],&my_first_i,&encodedSize);
 
 		if (encoded != NULL)
 		{

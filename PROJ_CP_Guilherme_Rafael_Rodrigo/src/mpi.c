@@ -97,19 +97,19 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 
 void writeToFile(char* encoded, long* size, int* rank){
 
-	FILE* compresedFile = NULL;
+	FILE* compressedFile = NULL;
 	char FileName[30]={'\0'};
 
 	sprintf(FileName, "comp_%i.grg", *rank);
 
-	compresedFile = fopen(FileName, "ab+");
+	compressedFile = fopen(FileName, "ab+");
 	
-	if(NULL != compresedFile){
-		fseek(compresedFile, 0, SEEK_END);
-		fwrite(encoded, sizeof(char), *size, compresedFile);
+	if(NULL != compressedFile){
+		fseek(compressedFile, 0, SEEK_END);
+		fwrite(encoded, sizeof(char), *size, compressedFile);
 	}
 
-	fclose(compresedFile);
+	fclose(compressedFile);
 }
 
 void manageProcessesWritingToFile(int* rank,char* encoded,long* size){
@@ -117,7 +117,7 @@ void manageProcessesWritingToFile(int* rank,char* encoded,long* size){
 	while (count != *rank){
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
 	}
-	writeToFile(encoded, size);
+	writeToFile(encoded, size,rank);
 	count++;
 	MPI_Bcast(&count,1,MPI_INT,*rank,MPI_COMM_WORLD);
 
@@ -323,20 +323,22 @@ int encode (char *message, int size, int width, int height, char *output){
 	
 }
 
-char* readAndEncode(int* rank,long* local_n,char* filename,long* encodedSize){
+char* readAndEncode(int* rank,long* local_n,char* filename,long* my_first_i,long* encodedSize){
 	FILE *input = NULL;
 	long bufferSize; 
 	char *buffer = NULL; 
 	char *encoded = NULL;
 	input = fopen(filename,"r");
+	fseek(input,54 + *my_first_i,SEEK_SET);
 	if (input != NULL){
-		bufferSize = sizeof(char) * 3 * (*local_n);
+		bufferSize = sizeof(char) * 3 * (p_info->width);
 		buffer = (char *) malloc(bufferSize);
 		encoded = (char *) malloc(bufferSize * 2);
 		memset(buffer,'0',bufferSize);
 		memset(encoded,'0',bufferSize * 2);
+
 		fread(buffer,1,bufferSize,input);		
-		*encodedSize = encode(buffer,bufferSize,p_info->width,p_info->height,encoded);
+		*encodedSize = encode(buffer,bufferSize,p_info->width,*local_n,encoded);
 		encoded = (char*) realloc(encoded,sizeof(char) * *encodedSize);
 	} else {
 		printf("Could not reopen file for some reason\n");
@@ -406,7 +408,7 @@ int main(int argc, char *argv[]){
 
 		printf("rank: %d, my_first_i: %ld, local_n: %ld\n",rank,my_first_i,local_n);	
 
-		encoded = readAndEncode(&rank,&local_n,argv[2],&encodedSize);
+		encoded = readAndEncode(&rank,&local_n,argv[2],&my_first_i,&encodedSize);
 
 		if (encoded != NULL){
 			manageProcessesWritingToFile(&rank,encoded,&encodedSize);
