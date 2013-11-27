@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 
-		encoded = readAndEncode(&p_info->width,argv[1],&encodedSize);
+		encoded = readAndEncode(&p_info->height,argv[1],&encodedSize);
 
 		if (encoded != NULL)
 		{
