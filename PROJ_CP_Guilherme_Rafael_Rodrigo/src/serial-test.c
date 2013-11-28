@@ -160,9 +160,9 @@ void decode (char *message, long encodedWidth, long width, char *output){
 	
 	while (i < encodedWidth){
 		count = (int) message[i];
-		color = &message[i+3];	
+		color = &message[i+1];	
 
-		while (outputIndex < count && count < 255){
+		while (outputIndex < count){
 			output[outputIndex] = color[0];
 			output[++outputIndex] = color[1];
 			output[++outputIndex] = color[2];	
@@ -170,7 +170,7 @@ void decode (char *message, long encodedWidth, long width, char *output){
 			outputIndex++;
 		}
 
-		i += 6;		
+		i += 4;		
 	}
 }
 
@@ -178,7 +178,7 @@ void encode (char *message, long width, char *output, long* encodedSize){
 	int i = 0;
 	int count = 1;
 	int outputIndex = 0;
-	
+
 	while (i < width){
 
 		if (message[i] == message[i+3] && 
@@ -324,7 +324,7 @@ int main(int argc, char *argv[])
 
 		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
-		originalSize = sizeof(char) * 3 * (p_info->width);
+		originalSize = 3 * p_info->width;
 		buffer = (char *) malloc(originalSize);
 		encoded = (char *) malloc(originalSize * 2);
 		memset(encoded,'0',originalSize * 2);
