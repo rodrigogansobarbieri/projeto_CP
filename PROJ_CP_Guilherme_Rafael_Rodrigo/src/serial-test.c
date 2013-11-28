@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <time.h>
 #include <string.h>
 
@@ -85,8 +84,8 @@ void read_header(BMP_HEADER *header,FILE *f){
 
 }
 
-void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one array to another
-	int i;
+void myMemCpy(char* dest,char* src,long size){ //copy an amount of data from one array to another
+	long i;
 	for (i = 0; i < size; i++)
 		dest[i] = src[i];
 }
@@ -102,6 +101,8 @@ void writeToFile(char* message, long* size,char* filename){
 		fwrite(message, sizeof(char), *size, output);
 		fflush(output);
 		fclose(output);
+	} else {
+		printf("Could not write to file for some reason\n");
 	}
 }
 
@@ -109,18 +110,6 @@ void manageProcessesWritingToFile(char* encoded,long* size,char* filename){
 
 	writeToFile(encoded, size,filename);
 }
-
-
-
-void print_local_array(int *local_n, int local_array[]){ //prints an array
-
-	int i;
-	for (i = 0; i < *local_n; i++)
-		printf("%d ",local_array[i]);
-	printf("\n");
-}
-
-
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
@@ -151,10 +140,10 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 
 
 void decode (char *message, long encodedWidth, long width, char *output){
-	int i = 0;
-	int count = 0;
+	long i = 0;
+	long count = 0;
 	char* color = NULL;
-	int outputIndex = 0;
+	long outputIndex = 0;
 	
 	
 	
@@ -175,9 +164,9 @@ void decode (char *message, long encodedWidth, long width, char *output){
 }
 
 void encode (char *message, long width, char *output, long* encodedSize){
-	int i = 0;
-	int count = 1;
-	int outputIndex = 0;
+	long i = 0;
+	long count = 1;
+	long outputIndex = 0;
 
 	while (i < width){
 
@@ -233,7 +222,7 @@ void readAndDecode(FILE *input,char* buffer, long* encodedSize, long* decodedSiz
 }
 
 void readAndEncode(FILE *input,char* buffer, long* originalSize, char* encoded, long* encodedSize){
-
+	char* resizedEncoded = NULL;
 	if (input != NULL){
 		
 		fread(buffer,1,*originalSize,input);		
@@ -243,8 +232,14 @@ void readAndEncode(FILE *input,char* buffer, long* originalSize, char* encoded, 
 		printf("original size: %ld,encoded size: %ld\n",*originalSize,*encodedSize);
 		fflush(stdout);
 
-		encoded = (char*) realloc(encoded,*encodedSize);
-		printf("passed\n");
+		resizedEncoded = (char*) malloc (*encodedSize);
+		printf("passed 1\n");
+//		encoded = (char*) realloc(encoded,*encodedSize);
+		myMemCpy(resizedEncoded,encoded,*encodedSize);
+		printf("passed 2\n");
+		free(encoded);
+		encoded = resizedEncoded;
+		printf("passed 3\n");
 		fflush(stdout);
 
 	} 
@@ -264,17 +259,12 @@ int main(int argc, char *argv[])
 	char print = 'Y';
 	int rank,p,t;
 	long local_n,my_first_i,n;
-	int *array = NULL;
-	int *aux;
-	int *result;
-	int *local_array;
 	double start = 0;
 	double end = 0;
 	double total = 0;
 	double max = 0;
-	int i;
+	long i;
 	long* encodedSize = NULL;
-	long decodedSize = 0;
 	long dimensions[2];
 	char* encoded = NULL;
 	char* decoded = NULL;
@@ -363,20 +353,20 @@ int main(int argc, char *argv[])
 
 			decoded = (char*) malloc(originalSize);
 			buffer = (char*) malloc(encodedSize[0]);
-
+			
 			for (i = 0; i < local_n; i++)
 			{	
 
 				memset(buffer,'0',encodedSize[i]);
 				memset(decoded,'0',originalSize);
 
-				printf("%d\n", i);
+				printf("%ld\n", i);
 				readAndDecode(f,buffer,&encodedSize[i],&originalSize,decoded);
 				printf("Step1\n");
 				if (decoded != NULL)
 				{
 					printf("Step2\n");
-					manageProcessesWritingToFile(decoded,&decodedSize,"uncompressed.bmp");
+					manageProcessesWritingToFile(decoded,&originalSize,"uncompressed.bmp");
 					printf("Step3\n");
 				} 
 				else 
