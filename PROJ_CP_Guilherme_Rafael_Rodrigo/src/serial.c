@@ -100,9 +100,9 @@ void writeToFile(char* message, long* size,char* filename){
 	if(NULL != output){
 		fseek(output, 0, SEEK_END);
 		fwrite(message, sizeof(char), *size, output);
+		fflush(output);
+		fclose(output);
 	}
-
-	fclose(output);
 }
 
 void manageProcessesWritingToFile(char* encoded,long* size,char* filename){
@@ -159,7 +159,7 @@ void decode (char *message, long encodedWidth, long width, char *output){
 	output = (char*) malloc (sizeof(char) * width);
 	
 	while (i < encodedWidth){
-		count = (message[i] << 16) + (message[i+1] << 8) + message[i+2];
+		count = (int) message[i];
 		color = &message[i+3];	
 
 		while (outputIndex < count){
@@ -275,7 +275,7 @@ int main(int argc, char *argv[])
 	double total = 0;
 	double max = 0;
 	int i;
-	long encodedSize = 0;
+	long* encodedSize;
 	long decodedSize = 0;
 	long dimensions[2];
 	char* encoded = NULL;
@@ -289,6 +289,8 @@ int main(int argc, char *argv[])
 	rank = 0;
 
 	initialize_header(&header);
+
+	encodedSize = (long*) malloc (sizeof(long) * p_info->height);
 
 	
 	f = validation(&argc,argv);
@@ -325,11 +327,11 @@ int main(int argc, char *argv[])
 		{	
 
 
-			encoded = readAndEncode(f,&encodedSize);
+			encoded = readAndEncode(f,&encodedSize[i]);
 
 			if (encoded != NULL)
 			{
-				manageProcessesWritingToFile(encoded,&encodedSize,"compressed.grg");
+				manageProcessesWritingToFile(encoded,&encodedSize[i],"compressed.grg");
 			} 
 			else 
 			{
@@ -344,24 +346,28 @@ int main(int argc, char *argv[])
 	
 			writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
 
-			f = fopen("uncompressed.bmp","r");
+			f = fopen("compressed.grg","r");
 			fseek(f,54 + my_first_i,SEEK_SET);
 
 			for (i = 0; i < local_n; i++)
 			{	
-				decoded = readAndDecode(f,&encodedSize,&decodedSize);
-
+				printf("%d\n", i);
+				decoded = readAndDecode(f,&encodedSize[i],&decodedSize);
+				printf("Step1\n");
 				if (decoded != NULL)
 				{
+					printf("Step2\n");
 					manageProcessesWritingToFile(decoded,&decodedSize,"uncompressed.bmp");
+					printf("Step3\n");
 				} 
 				else 
 				{
+					printf("Step4\n");
 					printf("Could not encode for some reason\n");
 				}
 			}
 
-
+			fclose(f);
 		}
 
 
