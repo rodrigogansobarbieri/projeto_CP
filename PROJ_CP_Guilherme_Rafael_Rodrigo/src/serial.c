@@ -17,7 +17,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	long width; //image width
 	int p; //number of threads selected by the user
 	long header_size; //header size
-	char print; //whether the user chose to print the sorted array
+	char decode; //whether the user chose to print the sorted array
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -91,26 +91,23 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 		dest[i] = src[i];
 }
 
-void writeToFile(char* encoded, long* size){
+void writeToFile(char* message, long* size,char* filename){
 
-	FILE* compressedFile = NULL;
-	char FileName[30]={'\0'};
+	FILE* output = NULL;
 
-	sprintf(FileName, "compressed.grg");
-
-	compressedFile = fopen(FileName, "ab+");
+	output = fopen(filename, "ab+");
 	
-	if(NULL != compressedFile){
-		fseek(compressedFile, 0, SEEK_END);
-		fwrite(encoded, sizeof(char), *size, compressedFile);
+	if(NULL != output){
+		fseek(output, 0, SEEK_END);
+		fwrite(message, sizeof(char), *size, output);
 	}
 
-	fclose(compressedFile);
+	fclose(output);
 }
 
-void manageProcessesWritingToFile(char* encoded,long* size){
+void manageProcessesWritingToFile(char* encoded,long* size,char* filename){
 
-	writeToFile(encoded, size);
+	writeToFile(encoded, size,filename);
 }
 
 
@@ -130,13 +127,15 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 	char filename[50];
 	FILE* f = NULL;
 	
-	if (*argc != 2)
+	if (*argc != 3)
 	{ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <file name>\n",argv[0]);
+		printf("Usage: %s <file name> <decode? Y/N>\n",argv[0]);
 		fflush(stdout);
 	} 
 	else 
 	{
+		p_info->decode = *argv[2];
+
 		strcpy(filename,argv[1]);
 		f = fopen(filename,"r");
 
@@ -151,16 +150,34 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 }
 
 
-
-
-int encode (char *message, int width, int height, char *output){
-	int i = 0; //,j = 0;
-	int count = 1;
+void decode (char *message, long encodedWidth, long width, char *output){
+	int i = 0;
+	int count = 0;
+	char* color = NULL;
 	int outputIndex = 0;
 	
-	//int countBytesPerLine = 0;
-	//int bytesPadding = width%4;
-		
+	output = (char*) malloc (sizeof(char) * width);
+	
+	while (i < encodedWidth){
+		count = (message[i] << 16) + (message[i+1] << 8) + message[i+2];
+		color = &message[i+3];	
+
+		while (outputIndex < count){
+			output[outputIndex] = color[0];
+			output[++outputIndex] = color[1];
+			output[++outputIndex] = color[2];	
+			count++;
+			outputIndex++;
+		}
+
+		i += 6;		
+	}
+}
+
+int encode (char *message, long width, char *output){
+	int i = 0;
+	int count = 1;
+	int outputIndex = 0;
 	
 	while (i < width){
 
@@ -178,10 +195,8 @@ int encode (char *message, int width, int height, char *output){
 			outputIndex++;
 			count = 1;
 		}
-		//countBytesPerLine += 3;
 		i += 3;
 	}
-	//i += bytesPadding;
 	
 	return outputIndex;
 	
@@ -201,6 +216,24 @@ void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates
 	}
 }
 
+char* readAndDecode(FILE *input,long* encodedSize, long* decodedSize){
+	char *buffer = NULL;
+	char *decoded = NULL;
+	if (input != NULL){
+		buffer = (char*) malloc (*encodedSize);
+		decoded = (char*) malloc (*decodedSize);
+		memset(buffer,'0',*encodedSize);
+		memset(decoded,'0',*decodedSize);
+		fread(buffer,1,*encodedSize,input);
+		decode(buffer,*encodedSize,*decodedSize,decoded);
+	} else {
+		printf("Could not reopen file for some reason\n");
+	
+	}
+	return decoded;
+
+}
+
 char* readAndEncode(FILE *input,long* encodedSize){
 	long bufferSize; 
 	char *buffer = NULL; 
@@ -214,7 +247,7 @@ char* readAndEncode(FILE *input,long* encodedSize){
 		memset(encoded,'0',bufferSize * 2);
 		fread(buffer,1,bufferSize,input);		
 		
-		*encodedSize = encode(buffer,bufferSize,p_info->width,encoded);
+		*encodedSize = encode(buffer,bufferSize,encoded);
 		encoded = (char*) realloc(encoded,sizeof(char) * *encodedSize);
 	} 
 	else {
@@ -243,8 +276,10 @@ int main(int argc, char *argv[])
 	double max = 0;
 	int i;
 	long encodedSize = 0;
+	long decodedSize = 0;
 	long dimensions[2];
 	char* encoded = NULL;
+	char* decoded = NULL;
 	BMP_HEADER header;
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo));//allocates ProgramInfo structure
@@ -283,7 +318,7 @@ int main(int argc, char *argv[])
 		f = fopen(argv[1],"r");
 		fseek(f,54 + my_first_i,SEEK_SET);
 
-		writeToFile((char*) &header,&p_info->header_size);
+		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 		
 
 		for (i = 0; i < local_n; i++)
@@ -294,7 +329,7 @@ int main(int argc, char *argv[])
 
 			if (encoded != NULL)
 			{
-				manageProcessesWritingToFile(encoded,&encodedSize);
+				manageProcessesWritingToFile(encoded,&encodedSize,"compressed.grg");
 			} 
 			else 
 			{
@@ -302,6 +337,36 @@ int main(int argc, char *argv[])
 			}
 		}
 		fclose(f);
+
+		if (p_info->decode == 'Y'){
+
+			decodedSize = p_info->width * 3;
+	
+			writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
+
+			f = fopen("uncompressed.bmp","r");
+			fseek(f,54 + my_first_i,SEEK_SET);
+
+			for (i = 0; i < local_n; i++)
+			{	
+				decoded = readAndDecode(f,&encodedSize,&decodedSize);
+
+				if (decoded != NULL)
+				{
+					manageProcessesWritingToFile(decoded,&decodedSize,"uncompressed.bmp");
+				} 
+				else 
+				{
+					printf("Could not encode for some reason\n");
+				}
+			}
+
+
+		}
+
+
+
+
 	}
 	
 	return 0;
