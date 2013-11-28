@@ -104,9 +104,7 @@ void writeToFile(char* message, long* size,char* filename){
 	} else {
 		printf("Could not write to file for some reason\n");
 	}
-	else{
-		printf("Falha ao escrever no arquivo");
-	}
+	
 }
 
 void manageProcessesWritingToFile(char* encoded,long* size,char* filename){
