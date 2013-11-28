@@ -14,6 +14,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	long height; //image height
 	long width; //image width
 	int p; //number of threads selected by the user
+	long header_size; //header size
 	char print; //whether the user chose to print the sorted array
 } ProgramInfo;
 
@@ -248,6 +249,7 @@ int main(int argc, char *argv[])
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo));//allocates ProgramInfo structure
 
 	p_info->p = 1;
+	p_info->header_size = 54;
 	rank = 0;
 
 	initialize_header(&header);
@@ -279,6 +281,9 @@ int main(int argc, char *argv[])
 
 		f = fopen(argv[1],"r");
 		fseek(f,54 + my_first_i,SEEK_SET);
+
+		writeToFile((char*) &header,&p_info->header_size);
+		
 
 		for (i = 0; i < local_n; i++)
 		{	
