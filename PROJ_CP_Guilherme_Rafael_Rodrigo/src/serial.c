@@ -150,7 +150,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 
 
 
-int encode (char *message, int size, int width, int height, char *output){
+int encode (char *message, int width, int height, char *output){
 	int i = 0,j = 0;
 	int count = 1;
 	int outputIndex = 0;
@@ -199,13 +199,11 @@ void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates
 	}
 }
 
-char* readAndEncode(long* local_n,char* filename,long* my_first_i,long* encodedSize){
-	FILE *input = NULL;
+char* readAndEncode(FILE *input,long* encodedSize){
 	long bufferSize; 
 	char *buffer = NULL; 
 	char *encoded = NULL;
-	input = fopen(filename,"r");
-	fseek(input,54 + *my_first_i,SEEK_SET);
+
 	if (input != NULL){
 		bufferSize = sizeof(char) * 3 * (p_info->width);
 		buffer = (char *) malloc(bufferSize);
@@ -213,7 +211,8 @@ char* readAndEncode(long* local_n,char* filename,long* my_first_i,long* encodedS
 		memset(buffer,'0',bufferSize);
 		memset(encoded,'0',bufferSize * 2);
 		fread(buffer,1,bufferSize,input);		
-		*encodedSize = encode(buffer,bufferSize,p_info->width,*local_n,encoded);
+		
+		*encodedSize = encode(buffer,bufferSize,p_info->width,encoded);
 		encoded = (char*) realloc(encoded,sizeof(char) * *encodedSize);
 	} 
 	else {
@@ -249,6 +248,7 @@ int main(int argc, char *argv[])
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo));//allocates ProgramInfo structure
 
 	p_info->p = 1;
+	rank = 0;
 
 	initialize_header(&header);
 
@@ -273,18 +273,28 @@ int main(int argc, char *argv[])
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 
-		calculateLocalArray(&local_n,&my_first_i,0);
+		
 
-		encoded = readAndEncode(&p_info->height,argv[1],&my_first_i,&encodedSize);
+		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-		if (encoded != NULL)
-		{
-			manageProcessesWritingToFile(encoded,&encodedSize);
-		} 
-		else 
-		{
-			printf("Could not encode for some reason\n");
+		f = fopen(argv[1],"r");
+		fseek(f,54 + my_first_i,SEEK_SET);
+
+		for (i = 0; i < local_n; i++)
+		{	
+
+			encoded = readAndEncode(f,&encodedSize);
+
+			if (encoded != NULL)
+			{
+				manageProcessesWritingToFile(encoded,&encodedSize);
+			} 
+			else 
+			{
+				printf("Could not encode for some reason\n");
+			}
 		}
+		fclose(f);
 	}
 	
 	return 0;
