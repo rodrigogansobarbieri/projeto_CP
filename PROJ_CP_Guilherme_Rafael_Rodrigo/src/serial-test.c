@@ -103,6 +103,9 @@ void writeToFile(char* message, long* size,char* filename){
 		fflush(output);
 		fclose(output);
 	}
+	else{
+		printf("Falha ao escrever no arquivo");
+	}
 }
 
 void manageProcessesWritingToFile(char* encoded,long* size,char* filename){
@@ -376,7 +379,7 @@ int main(int argc, char *argv[])
 				if (decoded != NULL)
 				{
 					printf("Step2\n");
-					manageProcessesWritingToFile(decoded,&decodedSize,"uncompressed.bmp");
+					manageProcessesWritingToFile(decoded,&originalSize,"uncompressed.bmp");
 					printf("Step3\n");
 				} 
 				else 
