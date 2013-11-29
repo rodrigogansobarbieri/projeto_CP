@@ -17,6 +17,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	int p; //number of threads selected by the user
 	long header_size; //header size
 	char decode; //whether the user chose to print the sorted array
+	int padding;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -141,25 +142,28 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 
 
 void decode (char *message, long encodedWidth, long width, char *output){
-	long i = 0;
-	long count = 0;
+	long i = 0,j = 0;
+	unsigned int count = 0;
 	char* color = NULL;
 	long outputIndex = 0;
-	
-	
-	
+		
 	while (i < encodedWidth){
-		count = (int) message[i];
+		count = (unsigned int) message[i];
+
+		if(count > 255){
+			count = count >> 24;
+		}
+		
 		color = &message[i+1];	
 
-		while (outputIndex < count){
+		while (j < count){
 			output[outputIndex] = color[0];
 			output[++outputIndex] = color[1];
 			output[++outputIndex] = color[2];	
-			count++;
+			j++;
 			outputIndex++;
 		}
-
+		j = 0;
 		i += 4;		
 	}
 }
@@ -168,8 +172,8 @@ void encode (char *message, long width, char *output, long* encodedSize){
 	long i = 0;
 	long count = 1;
 	long outputIndex = 0;
-
-	while (i < width){
+	
+	while (i < width - p_info->padding){
 
 		if (message[i] == message[i+3] && 
 			message[i+1] == message[i+4] && 
@@ -223,24 +227,21 @@ void readAndDecode(FILE *input,char* buffer, long* encodedSize, long* decodedSiz
 }
 
 void readAndEncode(FILE *input,char* buffer, long* originalSize, char* encoded, long* encodedSize){
-	char* resizedEncoded = NULL;
+	//char* resizedEncoded = NULL;
 	if (input != NULL){
 		
 		fread(buffer,1,*originalSize,input);		
 		
 		encode(buffer,*originalSize,encoded,encodedSize);
 
-		printf("original size: %ld,encoded size: %ld\n",*originalSize,*encodedSize);
+		//printf("original size: %ld,encoded size: %ld\n",*originalSize,*encodedSize);
 		fflush(stdout);
 
-		resizedEncoded = (char*) malloc (*encodedSize);
-		printf("passed 1\n");
-//		encoded = (char*) realloc(encoded,*encodedSize);
-		myMemCpy(resizedEncoded,encoded,*encodedSize);
-		printf("passed 2\n");
-		free(encoded);
-		encoded = resizedEncoded;
-		printf("passed 3\n");
+		//resizedEncoded = (char*) malloc (*encodedSize);
+		//printf("passed 1\n");
+		
+		//myMemCpy(resizedEncoded,encoded,*encodedSize);
+		//printf("passed 2\n");
 		fflush(stdout);
 
 	} 
@@ -248,7 +249,7 @@ void readAndEncode(FILE *input,char* buffer, long* originalSize, char* encoded, 
 		printf("Could not read file for some reason\n");
 	}
 
-
+//	return resizedEncoded;
 }
 
 int main(int argc, char *argv[])
@@ -271,6 +272,7 @@ int main(int argc, char *argv[])
 	char* decoded = NULL;
 	long originalSize = 0;
 	char* buffer = NULL;
+	char * newBuffer = NULL;
 	BMP_HEADER header;
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo));//allocates ProgramInfo structure
@@ -316,18 +318,22 @@ int main(int argc, char *argv[])
 		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
 		originalSize = 3 * p_info->width;
+		p_info->padding = 4 - originalSize%4;
+			 
+		originalSize = originalSize + p_info->padding;
+
 		buffer = (char *) malloc(originalSize);
 		encoded = (char *) malloc(originalSize * 2);
-		memset(encoded,'0',originalSize * 2);
 
 		for (i = 0; i < local_n; i++)
 		{	
-
+			
+			memset(encoded,'0',originalSize * 2);
 			memset(buffer,'0',originalSize);
 			
 
 			readAndEncode(f,buffer,&originalSize,encoded,&encodedSize[i]);
-
+			//encoded = (char*) realloc(encoded,encodedSize[i]);
 			if (encoded != NULL)
 			{
 				manageProcessesWritingToFile(encoded,&encodedSize[i],"compressed.grg");
@@ -344,6 +350,9 @@ int main(int argc, char *argv[])
 
 		free(buffer);
 		free(encoded);
+		
+		buffer = NULL;
+
 
 		if (p_info->decode == 'Y'){
 
@@ -353,10 +362,10 @@ int main(int argc, char *argv[])
 			fseek(f,54 + my_first_i,SEEK_SET);
 
 			decoded = (char*) malloc(originalSize);
-			buffer = (char*) malloc(encodedSize[0]);
 			
 			for (i = 0; i < local_n; i++)
 			{	
+				buffer = (char*) realloc(buffer, encodedSize[i]);
 
 				memset(buffer,'0',encodedSize[i]);
 				memset(decoded,'0',originalSize);
@@ -381,6 +390,8 @@ int main(int argc, char *argv[])
 
 			free(buffer);
 			free(decoded);
+
+		
 		}
 
 
