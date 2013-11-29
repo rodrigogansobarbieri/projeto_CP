@@ -171,14 +171,7 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 		i += 3;
 	}
 
-	i -= 3;
-
-	output[outputIndex] = (char) count & 0x000000FF;
-	output[++outputIndex] = message[i];
-	output[++outputIndex] = message[i+1];
-	output[++outputIndex] = message[i+2];
-	
-	*encodedSize = ++outputIndex;
+	*encodedSize = outputIndex;
 	
 }
 
@@ -275,7 +268,7 @@ int main(int argc, char *argv[])
 
 			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
-			p_info->padding = (4 - ((p_info->width * 3) % 4));
+			p_info->padding = ((p_info->width * 3) % 4);
 
 			originalSize = p_info->width * 3;
 
@@ -284,8 +277,8 @@ int main(int argc, char *argv[])
 
 			for (i = 0; i < local_n; i++)
 			{	
-				memset(imageInBytes,0,originalSize + p_info->padding);
-				memset(encodedImage,0,originalSize * 2);
+				memset(imageInBytes,'\0',originalSize + p_info->padding);
+				memset(encodedImage,'\0',originalSize * 2);
 
 				fread(imageInBytes,sizeof(char),originalSize + p_info->padding,f);		
 		
@@ -296,7 +289,7 @@ int main(int argc, char *argv[])
 				else 
 					printf("Could not encode for some reason\n");
 
-				memset(encodedImage,0,originalSize * 2);
+				memset(encodedImage,'\0',originalSize * 2);
 
 			}
 			fclose(f);
