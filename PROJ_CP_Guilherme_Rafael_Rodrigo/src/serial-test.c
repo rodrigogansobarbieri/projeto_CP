@@ -12,10 +12,10 @@
 
 
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
-	long height; //image height
-	long width; //image width
+	unsigned int height; //image height
+	unsigned int width; //image width
 	int p; //number of threads selected by the user
-	long header_size; //header size
+	int header_size; //header size
 	char decode; //whether the user chose to print the sorted array
 	int padding;
 } ProgramInfo;
@@ -65,28 +65,8 @@ void print_header(BMP_HEADER *header){
 	printf("signature: %hd,\nsize: %ld,\nreserved1: %hd,\nreserved2: %hd,\noffset_start: %ld,\nheader_size: %ld,\nwidth: %ld,\nheight: %ld,\nplanes: %hd,\nbits: %hd,\ncompression: %ld,\nsize_data: %ld,\nhppm: %ld,\nvppm: %ld,\ncolors: %ld,\nimportant_colors: %ld\n",header->signature,header->size,header->reserved1,header->reserved2,header->offset_start,header->header_size,header->width,header->height,header->planes,header->bits,header->compression,header->size_data,header->hppm,header->vppm,header->colors,header->important_colors);
 }
 
-void read_header(BMP_HEADER *header,FILE *f){
-	fread(&(header->signature),2,1,f);
-	fread(&(header->size),4,1,f);
-	fread(&(header->reserved1),2,1,f);
-	fread(&(header->reserved2),2,1,f);
-	fread(&(header->offset_start),4,1,f);
-	fread(&(header->header_size),4,1,f);
-	fread(&(header->width),4,1,f);
-	fread(&(header->height),4,1,f);
-	fread(&(header->planes),2,1,f);
-	fread(&(header->bits),2,1,f);
-	fread(&(header->compression),4,1,f);
-	fread(&(header->size_data),4,1,f);
-	fread(&(header->hppm),4,1,f);
-	fread(&(header->vppm),4,1,f);
-	fread(&(header->colors),4,1,f);
-	fread(&(header->important_colors),4,1,f);
-
-}
-
-void myMemCpy(char* dest,char* src,long size){ //copy an amount of data from one array to another
-	long i;
+void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one array to another
+	int i;
 	for (i = 0; i < size; i++)
 		dest[i] = src[i];
 }
@@ -108,7 +88,7 @@ void writeToFile(char* message, long* size,char* filename){
 	
 }
 
-void manageProcessesWritingToFile(char* encoded,long* size,char* filename){
+void manageProcessesWritingToFile(char* encoded,int* size,char* filename){
 
 	writeToFile(encoded, size,filename);
 }
@@ -148,7 +128,7 @@ void decode (char *message, long encodedWidth, long width, char *output){
 	long outputIndex = 0;
 		
 	while (i < encodedWidth){
-		count = (unsigned int) message[i];
+		count = (unsigned int) message[i] & 0xFF;
 
 		if(count > 255){
 			count = count >> 24;
@@ -196,9 +176,9 @@ void encode (char *message, long width, char *output, long* encodedSize){
 	
 }
 
-void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
-	long div = p_info->height / p_info->p;
-	long r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
+void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i,int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
+	unsigned int div = p_info->height / p_info->p;
+	unsigned int r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
 	if (*rank < r){
 		*local_n = div + 1;
 		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
@@ -257,63 +237,55 @@ int main(int argc, char *argv[])
 
 	FILE *f = NULL;
 	FILE *output = NULL;
-	char filename[50];
-	char print = 'Y';
-	int rank,p,t;
-	long local_n,my_first_i,n;
+	int rank;
+	unsigned int local_n,my_first_i;
 	double start = 0;
 	double end = 0;
 	double total = 0;
 	double max = 0;
-	long i;
-	long* encodedSize = NULL;
-	long dimensions[2];
-	char* encoded = NULL;
-	char* decoded = NULL;
-	long originalSize = 0;
-	char* buffer = NULL;
-	char * newBuffer = NULL;
+	int i;
+	int* encodedSize = NULL;
+	int dimensions[3];
+	int* encoded = NULL;
+	int* decoded = NULL;
+	int* buffer = NULL;
 	BMP_HEADER header;
 
-	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo));//allocates ProgramInfo structure
+	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo)); //allocates ProgramInfo structure
 
+	//Serial configuration
 	p_info->p = 1;
-	p_info->header_size = 54;
 	rank = 0;
 
 	initialize_header(&header);
 
-	encodedSize = (long*) malloc (sizeof(long) * p_info->height);
-	for (i = 0; i < p_info->height; i++)
-		encodedSize[i] = 0;
-
-	
 	f = validation(&argc,argv);
-	if (f != NULL)
-	{
-		read_header(&header,f);
+
+	if (f != NULL){
+		fread(&header,sizeof(BMP_HEADER),1,f);
 		print_header(&header);
 		fclose(f);
-		dimensions[0] = header.width;
-		dimensions[1] = header.height;
-	} 
-	else 
-	{
-		dimensions[0] = 0;
-		dimensions[1] = 0;
 	}
-	
-	if (dimensions[0] != 0 && dimensions[1] != 0)
+
+	dimensions[0] = (int) header.width;
+	dimensions[1] = (int) header.height;
+	dimensions[2] = (int) header.offset_start;
+
+	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0)
 	{
+
+		encodedSize = (int*) malloc (sizeof(int) * p_info->height);
+		for (i = 0; i < p_info->height; i++)
+			encodedSize[i] = 0;
+
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
-
-		
+		p_info->header_size = dimensions[2];
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
 		f = fopen(argv[1],"r");
-		fseek(f,54 + my_first_i,SEEK_SET);
+		fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
 		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
