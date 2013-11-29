@@ -15,7 +15,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	unsigned int height; //image height
 	unsigned int width; //image width
 	int p; //number of threads selected by the user
-	int header_size; //header size
+	unsigned int header_size; //header size
 	char decode; //whether the user chose to print the sorted array
 	int padding;
 } ProgramInfo;
@@ -71,7 +71,7 @@ void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one ar
 		dest[i] = src[i];
 }
 
-void writeToFile(char* message, long* size,char* filename){
+void writeToFile(char* message, unsigned int* size,char* filename){
 
 	FILE* output = NULL;
 
@@ -88,7 +88,7 @@ void writeToFile(char* message, long* size,char* filename){
 	
 }
 
-void manageProcessesWritingToFile(char* encoded,int* size,char* filename){
+void manageProcessesWritingToFile(char* encoded,unsigned int* size,char* filename){
 
 	writeToFile(encoded, size,filename);
 }
@@ -121,11 +121,11 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 }
 
 
-void decode (char *message, long encodedWidth, long width, char *output){
-	long i = 0,j = 0;
+void decode (int *message, unsigned encodedWidth, unsigned int width, int *output){
+	int i = 0,j = 0;
 	unsigned int count = 0;
-	char* color = NULL;
-	long outputIndex = 0;
+	int* color = NULL;
+	int outputIndex = 0;
 		
 	while (i < encodedWidth){
 		count = (unsigned int) message[i] & 0xFF;
@@ -148,10 +148,10 @@ void decode (char *message, long encodedWidth, long width, char *output){
 	}
 }
 
-void encode (char *message, long width, char *output, long* encodedSize){
-	long i = 0;
-	long count = 1;
-	long outputIndex = 0;
+void encode (int *message, unsigned int width, int *output, unsigned int* encodedSize){
+	unsigned int i = 0;
+	unsigned int count = 1;
+	unsigned int outputIndex = 0;
 	
 	while (i < width - p_info->padding){
 
@@ -190,7 +190,7 @@ void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i,int* ran
 	}
 }
 
-void readAndDecode(FILE *input,char* buffer, long* encodedSize, long* decodedSize, char* decoded){
+void readAndDecode(FILE *input,int* buffer, unsigned int* encodedSize, unsigned int* decodedSize, int* decoded){
 
 	if (input != NULL){
 
@@ -206,48 +206,22 @@ void readAndDecode(FILE *input,char* buffer, long* encodedSize, long* decodedSiz
 
 }
 
-void readAndEncode(FILE *input,char* buffer, long* originalSize, char* encoded, long* encodedSize){
-	//char* resizedEncoded = NULL;
-	if (input != NULL){
-		
-		fread(buffer,1,*originalSize,input);		
-		
-		encode(buffer,*originalSize,encoded,encodedSize);
-
-		//printf("original size: %ld,encoded size: %ld\n",*originalSize,*encodedSize);
-		fflush(stdout);
-
-		//resizedEncoded = (char*) malloc (*encodedSize);
-		//printf("passed 1\n");
-		
-		//myMemCpy(resizedEncoded,encoded,*encodedSize);
-		//printf("passed 2\n");
-		fflush(stdout);
-
-	} 
-	else {
-		printf("Could not read file for some reason\n");
-	}
-
-//	return resizedEncoded;
-}
-
 int main(int argc, char *argv[])
 {
 
 	FILE *f = NULL;
-	FILE *output = NULL;
+//	FILE *output = NULL;
 	int rank;
 	unsigned int local_n,my_first_i;
-	double start = 0;
-	double end = 0;
-	double total = 0;
-	double max = 0;
+//	double start = 0;
+//	double end = 0;
+//	double total = 0;
+//	double max = 0;
 	int i;
-	int* encodedSize = NULL;
+	unsigned int* encodedSize = NULL;
 	int dimensions[3];
 	int* encoded = NULL;
-	int* decoded = NULL;
+//	int* decoded = NULL;
 	int* buffer = NULL;
 	BMP_HEADER header;
 
@@ -264,7 +238,7 @@ int main(int argc, char *argv[])
 	if (f != NULL){
 		fread(&header,sizeof(BMP_HEADER),1,f);
 		print_header(&header);
-		fclose(f);
+
 	}
 
 	dimensions[0] = (int) header.width;
@@ -274,9 +248,10 @@ int main(int argc, char *argv[])
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0)
 	{
 
-		encodedSize = (int*) malloc (sizeof(int) * p_info->height);
-		for (i = 0; i < p_info->height; i++)
+		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * p_info->height);
+		for (i = 0; i < p_info->height; i++){
 			encodedSize[i] = 0;
+		}
 
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
@@ -284,88 +259,89 @@ int main(int argc, char *argv[])
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-		f = fopen(argv[1],"r");
-		fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
-		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
-
-		originalSize = 3 * p_info->width;
-		p_info->padding = 4 - originalSize%4;
-			 
-		originalSize = originalSize + p_info->padding;
-
-		buffer = (char *) malloc(originalSize);
-		encoded = (char *) malloc(originalSize * 2);
-
-		for (i = 0; i < local_n; i++)
-		{	
-			
-			memset(encoded,'0',originalSize * 2);
-			memset(buffer,'0',originalSize);
-			
-
-			readAndEncode(f,buffer,&originalSize,encoded,&encodedSize[i]);
-			//encoded = (char*) realloc(encoded,encodedSize[i]);
-			if (encoded != NULL)
-			{
-				manageProcessesWritingToFile(encoded,&encodedSize[i],"compressed.grg");
-			} 
-			else 
-			{
-				printf("Could not encode for some reason\n");
-			}
-
-			memset(encoded,'0',encodedSize[i]);
-
-		}
-		fclose(f);
-
-		free(buffer);
-		free(encoded);
+//		f = fopen(argv[1],"r");
+//		if (f != NULL){
 		
-		buffer = NULL;
+			fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
+			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
-		if (p_info->decode == 'Y'){
+			p_info->padding = (4 - ((p_info->width * 3) % 4));
 
-			writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
+			buffer = (int *) malloc(p_info->width);
+			encoded = (int *) malloc(p_info->width * 2);
 
-			f = fopen("compressed.grg","r");
-			fseek(f,54 + my_first_i,SEEK_SET);
-
-			decoded = (char*) malloc(originalSize);
-			
 			for (i = 0; i < local_n; i++)
 			{	
-				buffer = (char*) realloc(buffer, encodedSize[i]);
+				memset(buffer,0,p_info->width);
+				memset(encoded,0,p_info->width * 2);
 
-				memset(buffer,'0',encodedSize[i]);
-				memset(decoded,'0',originalSize);
+				fread(buffer,sizeof(int),p_info->width,f);		
+		
+				encode(buffer,p_info->width,encoded,&encodedSize[i]);
 
-				printf("%ld\n", i);
-				readAndDecode(f,buffer,&encodedSize[i],&originalSize,decoded);
-				printf("Step1\n");
-				if (decoded != NULL)
-				{
-					printf("Step2\n");
-					manageProcessesWritingToFile(decoded,&originalSize,"uncompressed.bmp");
-					printf("Step3\n");
-				} 
+				if (encoded != NULL)
+					manageProcessesWritingToFile((char*) encoded,&encodedSize[i],"compressed.grg");
 				else 
-				{
-					printf("Step4\n");
 					printf("Could not encode for some reason\n");
-				}
+
+				memset(encoded,0,p_info->width * 2);
+
 			}
-
 			fclose(f);
+			if (buffer != NULL)
+				free(buffer);
+			if (encoded != NULL)
+				free(encoded);
+		
+			buffer = NULL;
+			encoded = NULL;
+/*
 
-			free(buffer);
-			free(decoded);
+			if (p_info->decode == 'Y'){
+
+				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
+
+				f = fopen("compressed.grg","r");
+				fseek(f,54 + my_first_i,SEEK_SET);
+
+				decoded = (char*) malloc(originalSize);
+			
+				for (i = 0; i < local_n; i++)
+				{	
+					buffer = (char*) realloc(buffer, encodedSize[i]);
+
+					memset(buffer,'0',encodedSize[i]);
+					memset(decoded,'0',originalSize);
+
+					printf("%ld\n", i);
+					readAndDecode(f,buffer,&encodedSize[i],&originalSize,decoded);
+					printf("Step1\n");
+					if (decoded != NULL)
+					{
+						printf("Step2\n");
+						manageProcessesWritingToFile(decoded,&originalSize,"uncompressed.bmp");
+						printf("Step3\n");
+					} 
+					else 
+					{
+						printf("Step4\n");
+						printf("Could not encode for some reason\n");
+					}
+				}
+
+				fclose(f);
+
+				free(buffer);
+				free(decoded);
 
 		
-		}
-
+			
+*/
+//		} else {
+//			printf("Could not open original image\n");
+//		}
 
 
 
