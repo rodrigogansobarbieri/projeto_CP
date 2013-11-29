@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
 //	double max = 0;
 	int i;
 	unsigned int* encodedSize = NULL;
-	int dimensions[3];
+	unsigned int dimensions[3];
 	int* encoded = NULL;
 //	int* decoded = NULL;
 	int* buffer = NULL;
@@ -241,21 +241,23 @@ int main(int argc, char *argv[])
 
 	}
 
-	dimensions[0] = (int) header.width;
-	dimensions[1] = (int) header.height;
-	dimensions[2] = (int) header.offset_start;
+	dimensions[0] = (unsigned int) header.width;
+	dimensions[1] = (unsigned int) header.height;
+	dimensions[2] = (unsigned int) header.offset_start;
 
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0)
 	{
+
+		p_info->width = dimensions[0];
+		p_info->height = dimensions[1];
+		p_info->header_size = dimensions[2];
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * p_info->height);
 		for (i = 0; i < p_info->height; i++){
 			encodedSize[i] = 0;
 		}
 
-		p_info->width = dimensions[0];
-		p_info->height = dimensions[1];
-		p_info->header_size = dimensions[2];
+	
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
