@@ -64,12 +64,6 @@ void print_header(BMP_HEADER *header){
 	printf("signature: %hd,\nsize: %ld,\nreserved1: %hd,\nreserved2: %hd,\noffset_start: %ld,\nheader_size: %ld,\nwidth: %ld,\nheight: %ld,\nplanes: %hd,\nbits: %hd,\ncompression: %ld,\nsize_data: %ld,\nhppm: %ld,\nvppm: %ld,\ncolors: %ld,\nimportant_colors: %ld\n",header->signature,header->size,header->reserved1,header->reserved2,header->offset_start,header->header_size,header->width,header->height,header->planes,header->bits,header->compression,header->size_data,header->hppm,header->vppm,header->colors,header->important_colors);
 }
 
-void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one array to another
-	int i;
-	for (i = 0; i < size; i++)
-		dest[i] = src[i];
-}
-
 void writeToFile(char* message, unsigned int* size,char* filename){
 
 	FILE* output = NULL;
@@ -119,7 +113,6 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 	
 	return f;
 }
-
 
 void decode (char* message, unsigned int encodedWidth, unsigned int width, char* output){
 	unsigned int i = 0,j = 0;
@@ -251,15 +244,17 @@ int main(int argc, char *argv[])
 
 			originalSize = p_info->width * 3;
 
-			imageInBytes = (char *) malloc(originalSize + p_info->padding);
+			OriginalPlusPadding = originalSize +  p_info->padding;
+
+			imageInBytes = (char *) malloc(OriginalPlusPadding);
 			encodedImage = (char *) malloc(originalSize * 2);
 
 			for (i = 0; i < local_n; i++)
 			{	
-				memset(imageInBytes,'\0',originalSize + p_info->padding);
+				memset(imageInBytes,'\0',OriginalPlusPadding);
 				memset(encodedImage,'\0',originalSize * 2);
 
-				fread(imageInBytes,sizeof(char), originalSize + p_info->padding, f);
+				fread(imageInBytes,sizeof(char), OriginalPlusPadding, f);
 
 				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
 
@@ -283,18 +278,20 @@ int main(int argc, char *argv[])
 
 			if (p_info->decode == 'Y'){
 
+				
+
 				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
 
 				f = fopen("compressed.grg","rb");
 				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
-				imageInBytes = (char*) malloc(originalSize);
+				imageInBytes = (char*) malloc(OriginalPlusPadding);
 				encodedImage = (char*) malloc(originalSize * 2);
 			
 				for (i = 0; i < local_n; i++)
 				{	
 
-					memset(imageInBytes,'\0',originalSize);
+					memset(imageInBytes,'\0',OriginalPlusPadding);
 					memset(encodedImage,'\0', (originalSize * 2));
 					
 					fread(encodedImage,sizeof(char),encodedSize[i],f);
@@ -303,7 +300,7 @@ int main(int argc, char *argv[])
 
 					if (imageInBytes != NULL)
 					{
-						OriginalPlusPadding = originalSize +  p_info->padding;
+						
 							manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp");
 					}
 					else {
