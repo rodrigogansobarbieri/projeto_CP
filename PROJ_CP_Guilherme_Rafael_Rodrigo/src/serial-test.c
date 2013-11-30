@@ -207,6 +207,7 @@ int main(int argc, char *argv[])
 	unsigned int originalSize;
 //	int* decoded = NULL;
 	char* imageInBytes = NULL;
+	unsigned int lalala;
 	BMP_HEADER header;
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo)); //allocates ProgramInfo structure
@@ -303,7 +304,10 @@ int main(int argc, char *argv[])
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
 
 					if (imageInBytes != NULL)
-						manageProcessesWritingToFile(imageInBytes,&originalSize,"uncompressed.bmp");
+{
+						lalala = originalSize + p_info->padding;
+							manageProcessesWritingToFile(imageInBytes,&lalala,"uncompressed.bmp");
+}
 					else 
 						printf("Could not decode for some reason\n");
 				}
