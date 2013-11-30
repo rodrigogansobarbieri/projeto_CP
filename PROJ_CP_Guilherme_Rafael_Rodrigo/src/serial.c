@@ -82,9 +82,9 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	
 }
 
-void manageProcessesWritingToFile(char* encoded,unsigned int* size,char* filename){
+void manageProcessesWritingToFile(char* bytes,unsigned int* size,char* filename){
 
-	writeToFile(encoded, size,filename);
+	writeToFile(bytes, size,filename);
 }
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
