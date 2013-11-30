@@ -10,7 +10,6 @@
 // Final Project
 // Rodrigo Barbieri, Rafael Machado and Guilherme Baldo
 
-
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
 	unsigned int height; //image height
 	unsigned int width; //image width
@@ -148,21 +147,21 @@ void decode (int *message, unsigned encodedWidth, unsigned int width, int *outpu
 	}
 }
 
-void encode (int *message, unsigned int width, int *output, unsigned int* encodedSize){
+void encode (char* message, unsigned int width, char* output, unsigned int* encodedSize){
 	unsigned int i = 0;
 	unsigned int count = 1;
 	unsigned int outputIndex = 0;
 	
-	while (i < width - p_info->padding){
+	while (i < width){
 
 		if (message[i] == message[i+3] && 
 			message[i+1] == message[i+4] && 
 			message[i+2] == message[i+5] && 
-			count < 255) {
+			count < 255 && (i + 3 < width)) {
 			count++;
 		}
 		else {
-			output[outputIndex] = (char) count & 0xFF;
+			output[outputIndex] = (char) count & 0x000000FF;
 			output[++outputIndex] = message[i];
 			output[++outputIndex] = message[i+1];
 			output[++outputIndex] = message[i+2];
@@ -171,8 +170,15 @@ void encode (int *message, unsigned int width, int *output, unsigned int* encode
 		}
 		i += 3;
 	}
+
+	i -= 3;
+
+	output[outputIndex] = (char) count & 0x000000FF;
+	output[++outputIndex] = message[i];
+	output[++outputIndex] = message[i+1];
+	output[++outputIndex] = message[i+2];
 	
-	*encodedSize = outputIndex;
+	*encodedSize = ++outputIndex;
 	
 }
 
@@ -220,9 +226,10 @@ int main(int argc, char *argv[])
 	int i;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
-	int* encoded = NULL;
+	char* encodedImage = NULL;
+	unsigned int originalSize;
 //	int* decoded = NULL;
-	int* buffer = NULL;
+	char* imageInBytes = NULL;
 	BMP_HEADER header;
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo)); //allocates ProgramInfo structure
@@ -257,7 +264,6 @@ int main(int argc, char *argv[])
 			encodedSize[i] = 0;
 		}
 
-	
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
@@ -271,34 +277,36 @@ int main(int argc, char *argv[])
 
 			p_info->padding = (4 - ((p_info->width * 3) % 4));
 
-			buffer = (int *) malloc(p_info->width);
-			encoded = (int *) malloc(p_info->width * 2);
+			originalSize = p_info->width * 3;
+
+			imageInBytes = (char *) malloc(originalSize + p_info->padding);
+			encodedImage = (char *) malloc(originalSize * 2);
 
 			for (i = 0; i < local_n; i++)
 			{	
-				memset(buffer,0,p_info->width);
-				memset(encoded,0,p_info->width * 2);
+				memset(imageInBytes,0,originalSize + p_info->padding);
+				memset(encodedImage,0,originalSize * 2);
 
-				fread(buffer,sizeof(int),p_info->width,f);		
+				fread(imageInBytes,sizeof(char),originalSize + p_info->padding,f);		
 		
-				encode(buffer,p_info->width,encoded,&encodedSize[i]);
+				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
 
-				if (encoded != NULL)
-					manageProcessesWritingToFile((char*) encoded,&encodedSize[i],"compressed.grg");
+				if (encodedImage != NULL)
+					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed.grg");
 				else 
 					printf("Could not encode for some reason\n");
 
-				memset(encoded,0,p_info->width * 2);
+				memset(encodedImage,0,originalSize * 2);
 
 			}
 			fclose(f);
-			if (buffer != NULL)
-				free(buffer);
-			if (encoded != NULL)
-				free(encoded);
+			if (imageInBytes != NULL)
+				free(imageInBytes);
+			if (encodedImage != NULL)
+				free(encodedImage);
 		
-			buffer = NULL;
-			encoded = NULL;
+			imageInBytes = NULL;
+			encodedImage = NULL;
 /*
 
 			if (p_info->decode == 'Y'){
