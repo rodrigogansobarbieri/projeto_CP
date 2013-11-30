@@ -197,7 +197,7 @@ int main(int argc, char *argv[])
 //	double end = 0;
 //	double total = 0;
 //	double max = 0;
-	unsigned int i, j;
+	unsigned int i;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
 	char* encodedImage = NULL;
