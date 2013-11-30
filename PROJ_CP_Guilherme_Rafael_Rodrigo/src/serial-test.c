@@ -77,7 +77,7 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	output = fopen(filename, "ab+");
 	
 	if(NULL != output){
-		fseek(output, 0, SEEK_END);
+		//fseek(output, 0, SEEK_END);
 		fwrite(message, sizeof(char), *size, output);
 		fflush(output);
 		fclose(output);
@@ -120,18 +120,18 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 }
 
 
-void decode (int *message, unsigned encodedWidth, unsigned int width, int *output){
-	int i = 0,j = 0;
+void decode (char* message, unsigned int encodedWidth, unsigned int width, char* output){
+	unsigned int i = 0,j = 0;
 	unsigned int count = 0;
-	int* color = NULL;
+	char* color = NULL;
 	int outputIndex = 0;
 		
 	while (i < encodedWidth){
-		count = (unsigned int) message[i] & 0xFF;
+		count = (unsigned int) message[i] & 0x000000FF;
 
-		if(count > 255){
-			count = count >> 24;
-		}
+		//if(count > 255){
+			//count = count >> 24;
+		//}
 		
 		color = &message[i+1];	
 
@@ -175,7 +175,7 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 	
 }
 
-void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i,int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
+void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, unsigned int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
 	unsigned int div = p_info->height / p_info->p;
 	unsigned int r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
 	if (*rank < r){
@@ -189,34 +189,18 @@ void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i,int* ran
 	}
 }
 
-void readAndDecode(FILE *input,int* buffer, unsigned int* encodedSize, unsigned int* decodedSize, int* decoded){
-
-	if (input != NULL){
-
-		fread(buffer,1,*encodedSize,input);
-
-		decode(buffer,*encodedSize,*decodedSize,decoded);
-
-	} else {
-
-		printf("Could not read file for some reason\n");
-	
-	}
-
-}
-
 int main(int argc, char *argv[])
 {
 
 	FILE *f = NULL;
 //	FILE *output = NULL;
-	int rank;
+	unsigned int rank;
 	unsigned int local_n,my_first_i;
 //	double start = 0;
 //	double end = 0;
 //	double total = 0;
 //	double max = 0;
-	int i, j;
+	unsigned int i, j;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
 	char* encodedImage = NULL;
@@ -260,9 +244,6 @@ int main(int argc, char *argv[])
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-
-//		f = fopen(argv[1],"r");
-//		if (f != NULL){
 		
 			fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
@@ -300,52 +281,44 @@ int main(int argc, char *argv[])
 		
 			imageInBytes = NULL;
 			encodedImage = NULL;
-/*
+
 
 			if (p_info->decode == 'Y'){
 
 				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
 
-				f = fopen("compressed.grg","r");
-				fseek(f,54 + my_first_i,SEEK_SET);
+				f = fopen("compressed.grg","rb");
+				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
-				decoded = (char*) malloc(originalSize);
+				imageInBytes = (char*) malloc(originalSize + p_info->padding);
+				encodedImage = (char*) malloc(originalSize * 2);
 			
 				for (i = 0; i < local_n; i++)
 				{	
-					buffer = (char*) realloc(buffer, encodedSize[i]);
+					memset(imageInBytes,'\0',originalSize + p_info->padding);
+					memset(encodedImage,'\0',originalSize * 2);
+					
+					fread(encodedImage,1,encodedSize[i],f);
 
-					memset(buffer,'0',encodedSize[i]);
-					memset(decoded,'0',originalSize);
+					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
 
-					printf("%ld\n", i);
-					readAndDecode(f,buffer,&encodedSize[i],&originalSize,decoded);
-					printf("Step1\n");
-					if (decoded != NULL)
-					{
-						printf("Step2\n");
-						manageProcessesWritingToFile(decoded,&originalSize,"uncompressed.bmp");
-						printf("Step3\n");
-					} 
+					if (imageInBytes != NULL)
+						manageProcessesWritingToFile(imageInBytes,&originalSize,"uncompressed.bmp");
 					else 
-					{
-						printf("Step4\n");
-						printf("Could not encode for some reason\n");
-					}
+						printf("Could not decode for some reason\n");
 				}
 
 				fclose(f);
 
-				free(buffer);
-				free(decoded);
+				if (imageInBytes != NULL)
+					free(imageInBytes);
+				if (encodedImage != NULL)
+					free(encodedImage);
 
 		
-			
-*/
-//		} else {
-//			printf("Could not open original image\n");
-//		}
+			}
 
+	
 
 
 
