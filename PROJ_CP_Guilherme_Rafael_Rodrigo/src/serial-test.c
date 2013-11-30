@@ -74,7 +74,9 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 
 	FILE* output = NULL;
 
-	output = fopen(filename, "ab+");
+	while(output == NULL){
+		output = fopen(filename, "ab");
+	}
 	
 	if(NULL != output){
 		//fseek(output, 0, SEEK_END);
@@ -304,10 +306,10 @@ int main(int argc, char *argv[])
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
 
 					if (imageInBytes != NULL)
-{
+					{
 						lalala = originalSize + p_info->padding;
 							manageProcessesWritingToFile(imageInBytes,&lalala,"uncompressed.bmp");
-}
+					}
 					else 
 						printf("Could not decode for some reason\n");
 				}
