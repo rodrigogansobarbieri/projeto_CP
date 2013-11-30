@@ -107,7 +107,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 		p_info->decode = *argv[2];
 
 		strcpy(filename,argv[1]);
-		f = fopen(filename,"r");
+		f = fopen(filename,"rb");
 
 		if (f == NULL)
 		{ //check if the file inputted exists
@@ -216,7 +216,7 @@ int main(int argc, char *argv[])
 //	double end = 0;
 //	double total = 0;
 //	double max = 0;
-	int i;
+	int i, j;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
 	char* encodedImage = NULL;
@@ -280,8 +280,8 @@ int main(int argc, char *argv[])
 				memset(imageInBytes,'\0',originalSize + p_info->padding);
 				memset(encodedImage,'\0',originalSize * 2);
 
-				fread(imageInBytes,sizeof(char),originalSize + p_info->padding,f);		
-		
+				fread(imageInBytes,originalSize + p_info->padding, sizeof(char), f);
+
 				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
 
 				if (encodedImage != NULL)
