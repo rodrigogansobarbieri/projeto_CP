@@ -79,7 +79,6 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	}
 	
 	if(NULL != output){
-		//fseek(output, 0, SEEK_END);
 		fwrite(message, sizeof(char), *size, output);
 		fflush(output);
 		fclose(output);
@@ -131,10 +130,6 @@ void decode (char* message, unsigned int encodedWidth, unsigned int width, char*
 	while (i < encodedWidth){
 		count = (unsigned int) message[i] & 0x000000FF;
 
-		//if(count > 255){
-			//count = count >> 24;
-		//}
-		
 		color = &message[i+1];	
 
 		while (j < count){
@@ -209,7 +204,7 @@ int main(int argc, char *argv[])
 	unsigned int originalSize;
 //	int* decoded = NULL;
 	char* imageInBytes = NULL;
-	unsigned int lalala;
+	unsigned int OriginalPlusPadding;
 	BMP_HEADER header;
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo)); //allocates ProgramInfo structure
@@ -252,7 +247,7 @@ int main(int argc, char *argv[])
 
 			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
-			p_info->padding = ((p_info->width * 3) % 4);
+			p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
 
 			originalSize = p_info->width * 3;
 
@@ -264,7 +259,7 @@ int main(int argc, char *argv[])
 				memset(imageInBytes,'\0',originalSize + p_info->padding);
 				memset(encodedImage,'\0',originalSize * 2);
 
-				fread(imageInBytes,originalSize + p_info->padding, sizeof(char), f);
+				fread(imageInBytes,sizeof(char), originalSize + p_info->padding, f);
 
 				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
 
@@ -293,41 +288,31 @@ int main(int argc, char *argv[])
 				f = fopen("compressed.grg","rb");
 				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
-				imageInBytes = (char*) malloc(originalSize + p_info->padding);
+				imageInBytes = (char*) malloc(originalSize);
 				encodedImage = (char*) malloc(originalSize * 2);
 			
 				for (i = 0; i < local_n; i++)
 				{	
-					memset(imageInBytes,'\0',originalSize + p_info->padding);
-					memset(encodedImage,'\0',originalSize * 2);
+
+					memset(imageInBytes,'\0',originalSize);
+					memset(encodedImage,'\0', (originalSize * 2));
 					
-					fread(encodedImage,1,encodedSize[i],f);
+					fread(encodedImage,sizeof(char),encodedSize[i],f);
 
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
 
 					if (imageInBytes != NULL)
 					{
-						lalala = originalSize + p_info->padding;
-							manageProcessesWritingToFile(imageInBytes,&lalala,"uncompressed.bmp");
+						OriginalPlusPadding = originalSize +  p_info->padding;
+							manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp");
 					}
-					else 
+					else {
 						printf("Could not decode for some reason\n");
+					}
 				}
 
 				fclose(f);
-
-				if (imageInBytes != NULL)
-					free(imageInBytes);
-				if (encodedImage != NULL)
-					free(encodedImage);
-
-		
 			}
-
-	
-
-
-
 	}
 	
 	return 0;
