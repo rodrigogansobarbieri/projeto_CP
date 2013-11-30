@@ -89,7 +89,6 @@ void manageProcessesWritingToFile(char* encoded,unsigned int* size,char* filenam
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
-	char filename[50];
 	FILE* f = NULL;
 	
 	if (*argc != 3)
@@ -101,8 +100,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 	{
 		p_info->decode = *argv[2];
 
-		strcpy(filename,argv[1]);
-		f = fopen(filename,"rb");
+		f = fopen(argv[1],"rb");
 
 		if (f == NULL)
 		{ //check if the file inputted exists
@@ -179,11 +177,9 @@ void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, unsigne
 	}
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
-//	FILE *output = NULL;
 	unsigned int rank;
 	unsigned int local_n,my_first_i;
 //	double start = 0;
@@ -195,7 +191,6 @@ int main(int argc, char *argv[])
 	unsigned int dimensions[3];
 	char* encodedImage = NULL;
 	unsigned int originalSize;
-//	int* decoded = NULL;
 	char* imageInBytes = NULL;
 	unsigned int OriginalPlusPadding;
 	BMP_HEADER header;
@@ -213,44 +208,41 @@ int main(int argc, char *argv[])
 	if (f != NULL){
 		fread(&header,sizeof(BMP_HEADER),1,f);
 		print_header(&header);
-
+		fclose(f);
 	}
 
 	dimensions[0] = (unsigned int) header.width;
 	dimensions[1] = (unsigned int) header.height;
 	dimensions[2] = (unsigned int) header.offset_start;
 
-	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0)
-	{
+	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
 
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 		p_info->header_size = dimensions[2];
-
-		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * p_info->height);
-		for (i = 0; i < p_info->height; i++){
-			encodedSize[i] = 0;
-		}
-
+		p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
+		originalSize = p_info->width * 3;
+		OriginalPlusPadding = originalSize + p_info->padding;
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-		
+		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
+
+		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
+		for (i = 0; i < local_n; i++)
+			encodedSize[i] = 0;
+
+		f = fopen(argv[1],"rb");
+
+		if (f != NULL){
+
 			fseek(f,p_info->header_size + my_first_i,SEEK_SET);
-
-			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
-
-			p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
-
-			originalSize = p_info->width * 3;
-
-			OriginalPlusPadding = originalSize +  p_info->padding;
 
 			imageInBytes = (char *) malloc(OriginalPlusPadding);
 			encodedImage = (char *) malloc(originalSize * 2);
 
-			for (i = 0; i < local_n; i++)
-			{	
+			for (i = 0; i < local_n; i++){	
+
 				memset(imageInBytes,'\0',OriginalPlusPadding);
 				memset(encodedImage,'\0',originalSize * 2);
 
@@ -260,36 +252,23 @@ int main(int argc, char *argv[])
 
 				if (encodedImage != NULL)
 					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed.grg");
-				else 
+				else {
 					printf("Could not encode for some reason\n");
+				}
 
 				memset(encodedImage,'\0',originalSize * 2);
-
 			}
-			fclose(f);
-			if (imageInBytes != NULL)
-				free(imageInBytes);
-			if (encodedImage != NULL)
-				free(encodedImage);
-		
-			imageInBytes = NULL;
-			encodedImage = NULL;
 
+			fclose(f);
 
 			if (p_info->decode == 'Y'){
-
-				
 
 				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
 
 				f = fopen("compressed.grg","rb");
 				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
-				imageInBytes = (char*) malloc(OriginalPlusPadding);
-				encodedImage = (char*) malloc(originalSize * 2);
-			
-				for (i = 0; i < local_n; i++)
-				{	
+				for (i = 0; i < local_n; i++){	
 
 					memset(imageInBytes,'\0',OriginalPlusPadding);
 					memset(encodedImage,'\0', (originalSize * 2));
@@ -298,19 +277,27 @@ int main(int argc, char *argv[])
 
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
 
-					if (imageInBytes != NULL)
-					{
-						
-							manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp");
-					}
-					else {
+					if (imageInBytes != NULL){
+						manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp");
+					} else {
 						printf("Could not decode for some reason\n");
 					}
 				}
 
 				fclose(f);
 			}
+
+			if (encodedImage != NULL)
+				free(encodedImage);
+			if (imageInBytes != NULL)
+				free(imageInBytes);
+			if (encodedSize != NULL)
+				free(encodedSize);
+		}
 	}
+
+	if (p_info != NULL)
+		free(p_info);
 	
 	return 0;
 }
