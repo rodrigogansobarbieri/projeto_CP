@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include "timer.h"
 
 #pragma pack(1)
 
@@ -18,6 +19,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	unsigned int header_size; //header size
 	char decode; //whether the user chose to print the sorted array
 	int padding;
+	int repeat;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -88,20 +90,19 @@ void manageProcessesWritingToFile2(char* bytes,unsigned int* size,char* filename
 	writeToFile(bytes, size,filename);
 }
 
-
-
-
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
 	FILE* f = NULL;
 	
-	if (*argc != 3)
+	if (*argc != 4)
 	{ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <file name> <decode? Y/N>\n",argv[0]);
+		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat>\n",argv[0]);
 		fflush(stdout);
 	} 
 	else 
 	{
+		p_info->repeat = strtol(argv[3],NULL,10);
+		
 		p_info->decode = *argv[2];
 
 		f = fopen(argv[1],"rb");
@@ -111,6 +112,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 			printf("File not found!");
 			fflush(stdout);
 		}
+		
 	}
 	
 	return f;
@@ -166,8 +168,6 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 	*encodedSize = outputIndex;
 	
 }
-
-
 
 void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
 	unsigned int div = p_info->height / p_info->p;
@@ -229,18 +229,17 @@ int main(int argc, char *argv[]){
 	FILE *f = NULL;
 	int rank,p;
 	unsigned int local_n,my_first_i,t;
-//	double start = 0;
-//	double end = 0;
-//	double total = 0;
-//	double max = 0;
+	double start = 0;
+	double end = 0;
+	double min = 999;
 	unsigned int i;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
 	char* imageInBytesHEAD = NULL;
 	char* encodedImageHEAD = NULL;
 	char* encodedImage = NULL;
-	unsigned int originalSize;
 	char* imageInBytes = NULL;
+	unsigned int originalSize;
 	unsigned int originalPlusPadding;
 	BMP_HEADER header;
 
@@ -263,8 +262,6 @@ int main(int argc, char *argv[]){
 		dimensions[0] = (unsigned int) header.width;
 		dimensions[1] = (unsigned int) header.height;
 		dimensions[2] = (unsigned int) header.offset_start;
-
-		
 	}
 
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
@@ -279,6 +276,7 @@ int main(int argc, char *argv[]){
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
 		if (rank == 0)
+			remove("compressed.grg");
 			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
@@ -296,13 +294,31 @@ int main(int argc, char *argv[]){
 
 		manageProcessesReadingFile(imageInBytes,argv[1],&local_n,originalPlusPadding, &my_first_i, &rank);
 
-		imageInBytes = imageInBytesHEAD;
 
-		for (i = 0; i < local_n; i++){
-			encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
-			imageInBytes += originalPlusPadding;
-			encodedImage += originalSize * 2;
+		for (t = 0 ; t < p_info->repeat; t++){
+	
+			encodedImage = encodedImageHEAD;
+			imageInBytes = imageInBytesHEAD;
+
+			GET_TIME(start);
+
+			for (i = 0; i < local_n; i++){
+				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
+				imageInBytes += originalPlusPadding;
+				encodedImage += originalSize * 2;
+			}
+
+			GET_TIME(end);
+
+			printf("time: %lf\n",end - start);
+
+			if (end - start < min)
+				min = end - start;
+		
+
 		}
+
+		printf("min: %lf\n",min);
 
 		encodedImage = encodedImageHEAD;
 
@@ -313,6 +329,7 @@ int main(int argc, char *argv[]){
 
 		if (p_info->decode == 'Y'){
 
+				remove("uncompressed.bmp");
 				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
 
 				memset(imageInBytes,'\0',originalPlusPadding * local_n);
@@ -333,16 +350,19 @@ int main(int argc, char *argv[]){
 	
 				fclose(f);
 
-//			if (encodedImage != NULL)
-//				free(encodedImage);
-//			if (imageInBytes != NULL)
-//				free(imageInBytes);
-//			if (encodedSize != NULL)
-//				free(encodedSize);
+
 	
 		}
+		if (encodedImage != NULL)
+			free(encodedImage);
+		if (imageInBytes != NULL)
+			free(imageInBytes);
+		if (encodedSize != NULL)
+			free(encodedSize);
 	}
-//	if (p_info != NULL)
-//		free(p_info);
+
+	if (p_info != NULL)
+		free(p_info);
+
 	return 0;
 }
