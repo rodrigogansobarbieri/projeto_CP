@@ -182,7 +182,7 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 {
 	int count = 0, i;
 	FILE* input = NULL;
-
+	int read;
 	while (count != *rank)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
 
@@ -190,9 +190,11 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 
 	if (input != NULL){
 
-		fseek(input,p_info->header_size + *my_first_i,SEEK_SET);
+		fseek(input,p_info->header_size + (*my_first_i * size),SEEK_SET);
 		for (i = 0; i < *local_n ; i++){	
-			fread(bytes,sizeof(char), size, input);
+			read = fread(bytes,sizeof(char), size, input);
+			printf("read: %d, rank: %d, i: %d, size: %u, my_first_i: %u\n",read,*rank,i,size,*my_first_i);
+			writeToFile(bytes,&size,"teste-output.bmp");
 			bytes += size;
 		}
 		fclose(input);
@@ -294,7 +296,11 @@ int main(int argc, char *argv[]){
 		printf("rank: %d, dimensions0: %d, dimensions1: %d, dimensions2: %d\n",rank,dimensions[0],dimensions[1],dimensions[2]);	
 
 		if (rank == 0)
+		{
+
 			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
+			writeToFile((char*) &header,&p_info->header_size,"teste-output.bmp");
+		}
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
 		for (i = 0; i < local_n; i++)
@@ -331,31 +337,7 @@ int main(int argc, char *argv[]){
 		imageInBytes = imageInBytesHEAD;
 		
 
-		if (rank == 0 && p_info->decode == 'Y'){
-
-				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
-
-				memset(imageInBytes,'\0',originalPlusPadding * local_n);
-				memset(encodedImage,'\0',originalSize * 2 * local_n);
-
-				f = fopen("compressed.grg","rb");
-				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
-
-				for (i = 0; i < local_n; i++){	
-					fread(encodedImage,sizeof(char),encodedSize[i],f);
-					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
-					writeToFile(imageInBytes,&originalPlusPadding,"uncompressed.bmp");
-					imageInBytes += originalPlusPadding;
-					encodedImage += encodedSize[i];
-				}
-				encodedImage = encodedImageHEAD;
-				imageInBytes = imageInBytesHEAD;
-	
-				fclose(f);
-
-
-	
-		}
+		
 //			if (encodedImage != NULL)
 //				free(encodedImage);
 //			if (imageInBytes != NULL)
