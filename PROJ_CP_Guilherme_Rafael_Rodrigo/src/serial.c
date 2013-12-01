@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include "timer.h"
 
 #pragma pack(1)
 
@@ -18,6 +19,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	unsigned int header_size; //header size
 	char decode; //whether the user chose to print the sorted array
 	int padding;
+	int repeat;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -83,7 +85,7 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	
 }
 
-void manageProcessesWritingToFile(char* bytes,unsigned int* size,char* filename,int* rank){
+void manageProcessesWritingToFile2(char* bytes,unsigned int* size,char* filename,int* rank){
 
 	writeToFile(bytes, size,filename);
 }
@@ -92,13 +94,15 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 
 	FILE* f = NULL;
 	
-	if (*argc != 3)
+	if (*argc != 4)
 	{ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <file name> <decode? Y/N>\n",argv[0]);
+		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat>\n",argv[0]);
 		fflush(stdout);
 	} 
 	else 
 	{
+		p_info->repeat = strtol(argv[3],NULL,10);
+		
 		p_info->decode = *argv[2];
 
 		f = fopen(argv[1],"rb");
@@ -108,6 +112,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 			printf("File not found!");
 			fflush(stdout);
 		}
+		
 	}
 	
 	return f;
@@ -178,43 +183,86 @@ void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* ra
 	}
 }
 
+void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_n, unsigned int size, unsigned int* my_first_i, int* rank)
+{
+	int i;
+	FILE* input = NULL;
+
+	input = fopen(filename,"rb");
+
+	if (input != NULL){
+
+		fseek(input,p_info->header_size + *my_first_i,SEEK_SET);
+		for (i = 0; i < *local_n ; i++){	
+			fread(bytes,sizeof(char), size, input);
+			bytes += size;
+		}
+		fclose(input);
+	} else
+		printf("Rank: %d, Could not open file for reading\n",*rank);
+
+
+}
+
+void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* local_n,unsigned int block_size, unsigned int* size_list, int* rank){
+
+	int i;
+	FILE* output = NULL;
+
+	output = fopen(filename, "ab");
+
+	if (output != NULL){
+		for (i = 0; i < *local_n; i++){
+			fwrite(bytes, sizeof(char), size_list[i], output);
+			fflush(output);
+			bytes += block_size;
+		}
+		fclose(output);
+	} else 
+		printf("Rank: %d, Could not write to file\n",*rank);
+
+
+}
+
 int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
 	int rank;
 	unsigned int local_n,my_first_i,t;
-//	double start = 0;
-//	double end = 0;
-//	double total = 0;
-//	double max = 0;
+	double start = 0;
+	double end = 0;
+	double min = 999;
 	unsigned int i;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
+	char* imageInBytesHEAD = NULL;
+	char* encodedImageHEAD = NULL;
 	char* encodedImage = NULL;
-	unsigned int originalSize;
 	char* imageInBytes = NULL;
-	unsigned int OriginalPlusPadding;
+	unsigned int originalSize;
+	unsigned int originalPlusPadding;
 	BMP_HEADER header;
 
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo)); //allocates ProgramInfo structure
 
-	//Serial configuration
 	p_info->p = 1;
 	rank = 0;
 
-	initialize_header(&header);
+	if (rank == 0){
 
-	f = validation(&argc,argv);
+		initialize_header(&header);
+		f = validation(&argc,argv);
 
-	if (f != NULL){
-		fread(&header,sizeof(BMP_HEADER),1,f);
-		print_header(&header);
-		fclose(f);
+		if (f != NULL){
+			fread(&header,sizeof(BMP_HEADER),1,f);
+			print_header(&header);
+			fclose(f);
+			
+		}
+		dimensions[0] = (unsigned int) header.width;
+		dimensions[1] = (unsigned int) header.height;
+		dimensions[2] = (unsigned int) header.offset_start;
 	}
-
-	dimensions[0] = (unsigned int) header.width;
-	dimensions[1] = (unsigned int) header.height;
-	dimensions[2] = (unsigned int) header.offset_start;
 
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
 
@@ -223,82 +271,98 @@ int main(int argc, char *argv[]){
 		p_info->header_size = dimensions[2];
 		p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
 		originalSize = p_info->width * 3;
-		OriginalPlusPadding = originalSize + p_info->padding;
+		originalPlusPadding = originalSize + p_info->padding;
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-		writeToFile((char*) &header,&p_info->header_size,"compressed-shit.grg");
+		if (rank == 0)
+			remove("compressed.grg");
+			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
 		for (i = 0; i < local_n; i++)
 			encodedSize[i] = 0;
 
-		f = fopen(argv[1],"rb");
+		imageInBytes = (char *) malloc(originalPlusPadding * local_n);
+		encodedImage = (char *) malloc(originalSize * 2 * local_n);
 
-		if (f != NULL){
+		memset(imageInBytes,'\0',originalPlusPadding * local_n);
+		memset(encodedImage,'\0',originalSize * 2 * local_n);
 
-			fseek(f,p_info->header_size + my_first_i,SEEK_SET);
+		imageInBytesHEAD = imageInBytes;
+		encodedImageHEAD = encodedImage;
 
-			imageInBytes = (char *) malloc(OriginalPlusPadding);
-			encodedImage = (char *) malloc(originalSize * 2);
+		manageProcessesReadingFile(imageInBytes,argv[1],&local_n,originalPlusPadding, &my_first_i, &rank);
 
-			for (i = 0; i < local_n; i++){	
 
-				memset(imageInBytes,'\0',OriginalPlusPadding);
-				memset(encodedImage,'\0',originalSize * 2);
+		for (t = 0 ; t < p_info->repeat; t++){
+	
+			encodedImage = encodedImageHEAD;
+			imageInBytes = imageInBytesHEAD;
 
-				fread(imageInBytes,sizeof(char), OriginalPlusPadding, f);
+			GET_TIME(start);
 
+			for (i = 0; i < local_n; i++){
 				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
-
-				if (encodedImage != NULL)
-					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed-shit.grg",&rank);
-				else {
-					printf("Could not encode for some reason\n");
-				}
-
-				memset(encodedImage,'\0',originalSize * 2);
+				imageInBytes += originalPlusPadding;
+				encodedImage += originalSize * 2;
 			}
 
-			fclose(f);
+			GET_TIME(end);
 
-			if (p_info->decode == 'Y'){
+			printf("time: %lf\n",end - start);
 
+			if (end - start < min)
+				min = end - start;
+		
+
+		}
+
+		printf("min: %lf\n",min);
+
+		encodedImage = encodedImageHEAD;
+
+		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
+
+		encodedImage = encodedImageHEAD;
+		imageInBytes = imageInBytesHEAD;
+
+		if (p_info->decode == 'Y'){
+
+				remove("uncompressed.bmp");
 				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
+
+				memset(imageInBytes,'\0',originalPlusPadding * local_n);
+				memset(encodedImage,'\0',originalSize * 2 * local_n);
 
 				f = fopen("compressed.grg","rb");
 				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
 				for (i = 0; i < local_n; i++){	
-
-					memset(imageInBytes,'\0',OriginalPlusPadding);
-					memset(encodedImage,'\0', (originalSize * 2));
-					
 					fread(encodedImage,sizeof(char),encodedSize[i],f);
-
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
-
-					if (imageInBytes != NULL){
-						manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp",&rank);
-					} else {
-						printf("Could not decode for some reason\n");
-					}
+					writeToFile(imageInBytes,&originalPlusPadding,"uncompressed.bmp");
+					imageInBytes += originalPlusPadding;
+					encodedImage += encodedSize[i];
 				}
-
+				encodedImage = encodedImageHEAD;
+				imageInBytes = imageInBytesHEAD;
+	
 				fclose(f);
-			}
 
-			if (encodedImage != NULL)
-				free(encodedImage);
-			if (imageInBytes != NULL)
-				free(imageInBytes);
-			if (encodedSize != NULL)
-				free(encodedSize);
+
+	
 		}
+		if (encodedImage != NULL)
+			free(encodedImage);
+		if (imageInBytes != NULL)
+			free(imageInBytes);
+		if (encodedSize != NULL)
+			free(encodedSize);
 	}
 
 	if (p_info != NULL)
 		free(p_info);
-	
+
 	return 0;
 }

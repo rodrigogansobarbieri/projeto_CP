@@ -19,6 +19,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	unsigned int header_size; //header size
 	char decode; //whether the user chose to print the sorted array
 	int padding;
+	int repeat;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -92,13 +93,15 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 
 	FILE* f = NULL;
 	
-	if (*argc != 3)
+	if (*argc != 4)
 	{ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <file name> <decode? Y/N>\n",argv[0]);
+		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat>\n",argv[0]);
 		fflush(stdout);
 	} 
 	else 
 	{
+		p_info->repeat = strtol(argv[3],NULL,10);
+
 		p_info->decode = *argv[2];
 
 		f = fopen(argv[1],"rb");
@@ -193,8 +196,8 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 		fseek(input,p_info->header_size + (*my_first_i * size),SEEK_SET);
 		for (i = 0; i < *local_n ; i++){	
 			read = fread(bytes,sizeof(char), size, input);
-			printf("read: %d, rank: %d, i: %d, size: %u, my_first_i: %u\n",read,*rank,i,size,*my_first_i);
-			writeToFile(bytes,&size,"teste-output.bmp");
+//			printf("read: %d, rank: %d, i: %d, size: %u, my_first_i: %u\n",read,*rank,i,size,*my_first_i);
+			writeToFile(bytes,&size,"teste-input.bmp");
 			bytes += size;
 		}
 		fclose(input);
@@ -240,13 +243,13 @@ int main(int argc, char *argv[]){
 	FILE *f = NULL;
 	int rank,p;
 	unsigned int local_n,my_first_i,t;
-//	double start = 0;
-//	double end = 0;
-//	double total = 0;
-//	double max = 0;
+	double start = 0;
+	double end = 0;
+	double min = 999;
+	double total = 0;
 	unsigned int i;
 	unsigned int* encodedSize = NULL;
-	unsigned int dimensions[3];
+	unsigned int dimensions[4];
 	char* imageInBytesHEAD = NULL;
 	char* encodedImageHEAD = NULL;
 	char* encodedImage = NULL;
@@ -278,28 +281,30 @@ int main(int argc, char *argv[]){
 		dimensions[0] = (unsigned int) header.width;
 		dimensions[1] = (unsigned int) header.height;
 		dimensions[2] = (unsigned int) header.offset_start;
+		dimensions[3] = (unsigned int) p_info->repeat;
 	}
 
-	MPI_Bcast(dimensions,3,MPI_UNSIGNED,0,MPI_COMM_WORLD);	
+	MPI_Bcast(dimensions,4,MPI_UNSIGNED,0,MPI_COMM_WORLD);	
 
-	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
+	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0 && dimensions[3] != 0){
 
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 		p_info->header_size = dimensions[2];
+		p_info->repeat = dimensions[3];
 		p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
 		originalSize = p_info->width * 3;
 		originalPlusPadding = originalSize + p_info->padding;
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-		printf("rank: %d, dimensions0: %d, dimensions1: %d, dimensions2: %d\n",rank,dimensions[0],dimensions[1],dimensions[2]);	
+//		printf("rank: %d, dimensions0: %d, dimensions1: %d, dimensions2: %d\n",rank,dimensions[0],dimensions[1],dimensions[2]);	
 
-		if (rank == 0)
-		{
-
+		if (rank == 0){
+			remove("compressed.grg");
+			remove("teste-input.bmp");
 			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
-			writeToFile((char*) &header,&p_info->header_size,"teste-output.bmp");
+			writeToFile((char*) &header,&p_info->header_size,"teste-input.bmp");
 		}
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
@@ -321,13 +326,36 @@ int main(int argc, char *argv[]){
 
 		MPI_Barrier(MPI_COMM_WORLD);
 
-		for (i = 0; i < local_n; i++){
-			encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
-			imageInBytes += originalPlusPadding;
-			encodedImage += originalSize * 2;
-		}
+		for (t = 0 ; t < p_info->repeat; t++){
+	
+
+			encodedImage = encodedImageHEAD;
+			imageInBytes = imageInBytesHEAD;
+
+			start = MPI_Wtime();
+
+			for (i = 0; i < local_n; i++){
+				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
+				imageInBytes += originalPlusPadding;
+				encodedImage += originalSize * 2;
+			}
+
+			end = MPI_Wtime();
+
+			printf("rank: %d, time: %lf\n",rank, end - start);
+
+			if (end - start < min)
+				min = end - start;
+		}		
+
+		printf("rank: %d, min: %lf\n",rank, min);
 
 		MPI_Barrier(MPI_COMM_WORLD);
+
+		MPI_Reduce(&min,&total,1,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD);
+
+		if (rank == 0)
+			printf("rank: %d, total: %lf\n",rank, total);
 
 		encodedImage = encodedImageHEAD;
 
@@ -338,15 +366,17 @@ int main(int argc, char *argv[]){
 		
 
 		
-//			if (encodedImage != NULL)
-//				free(encodedImage);
-//			if (imageInBytes != NULL)
-//				free(imageInBytes);
-//			if (encodedSize != NULL)
-//				free(encodedSize);
+		if (encodedImage != NULL)
+			free(encodedImage);
+		if (imageInBytes != NULL)
+			free(imageInBytes);
+		if (encodedSize != NULL)
+			free(encodedSize);
 	}
-//	if (p_info != NULL)
-//		free(p_info);
+
+	if (p_info != NULL)
+		free(p_info);
+
 	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
 

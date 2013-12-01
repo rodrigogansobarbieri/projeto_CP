@@ -227,7 +227,7 @@ void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* loca
 int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
-	int rank,p;
+	int rank;
 	unsigned int local_n,my_first_i,t;
 	double start = 0;
 	double end = 0;
@@ -276,8 +276,8 @@ int main(int argc, char *argv[]){
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
 		if (rank == 0)
-			remove("compressed.grg");
-			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
+			remove("compressed-test.grg");
+			writeToFile((char*) &header,&p_info->header_size,"compressed-test.grg");
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
 		for (i = 0; i < local_n; i++)
@@ -322,7 +322,7 @@ int main(int argc, char *argv[]){
 
 		encodedImage = encodedImageHEAD;
 
-		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
+		manageProcessesWritingToFile(encodedImage,"compressed-test.grg",&local_n,originalSize * 2,encodedSize,&rank);
 
 		encodedImage = encodedImageHEAD;
 		imageInBytes = imageInBytesHEAD;
