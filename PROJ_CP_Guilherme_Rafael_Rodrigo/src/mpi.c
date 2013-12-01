@@ -3,6 +3,8 @@
 #include <mpi.h>
 #include <time.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #pragma pack(1)
 
@@ -84,21 +86,60 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	
 }
 
-void manageProcessesWritingToFile(char* bytes,unsigned int* size,char* filename, int* rank,int* special){
-	int count = 0;
+void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* local_n,unsigned int block_size, unsigned int* size_list, int* rank){
+
+	int count = 0, i;
+	FILE* output = NULL;
+
 	while (count != *rank)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
-//	printf("rank turn: %d\n",*rank);
-	if (*special != 1)
-		writeToFile(bytes, size,filename);
+
+	output = fopen(filename, "ab");
+	if (output != NULL){
+		for (i = 0; i < *local_n; i++){
+			fwrite(bytes, sizeof(char), size_list[i], output);
+			fflush(output);
+			bytes += block_size;
+		}
+		fclose(output);
+	} else 
+		printf("Rank: %d, Could not write to file\n",*rank);
+
 	count++;
 	MPI_Bcast(&count,1,MPI_INT,(int)*rank,MPI_COMM_WORLD);
 	while (count < p_info->p)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
-		
-	
 
 }
+
+void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_n, unsigned int size, unsigned int* my_first_i, int* rank)
+{
+	int count = 0, i;
+	FILE* input = NULL;
+
+	while (count != *rank)
+		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
+
+	input = fopen(filename,"rb");
+
+	if (input != NULL){
+
+		fseek(input,p_info->header_size + *my_first_i,SEEK_SET);
+		for (i = 0; i < *local_n ; i++){	
+			fread(bytes,sizeof(char), size, input);
+			bytes += size;
+		}
+		fclose(input);
+	} else
+		printf("Rank: %d, Could not open file for reading\n",*rank);
+
+	count++;
+	MPI_Bcast(&count,1,MPI_INT,(int)*rank,MPI_COMM_WORLD);
+	while(count < p_info->p)
+		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
+
+}
+
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
@@ -176,6 +217,8 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 	
 }
 
+
+
 void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* rank,int* special){ //calculates local number of elements and starting index for a specific rank based on total number of elements
 	unsigned int div = p_info->height / p_info->p;
 	int r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
@@ -195,6 +238,7 @@ int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
 	int rank,p;
+	int fd;
 	unsigned int local_n,my_first_i,t;
 //	double start = 0;
 //	double end = 0;
@@ -203,13 +247,15 @@ int main(int argc, char *argv[]){
 	unsigned int i;
 	unsigned int* encodedSize = NULL;
 	unsigned int dimensions[3];
+	char* imageInBytesHEAD = NULL;
 	char* encodedImage = NULL;
 	unsigned int originalSize;
 	char* imageInBytes = NULL;
-	unsigned int OriginalPlusPadding;
+	unsigned int originalPlusPadding;
 	BMP_HEADER header;
 	int special = 0;
 	int last_i = 0;
+	int file_index = 0;
 
 	MPI_Init(NULL,NULL);
 
@@ -238,13 +284,15 @@ int main(int argc, char *argv[]){
 		
 	}
 
-	MPI_Bcast(dimensions,2,MPI_LONG,0,MPI_COMM_WORLD);	
+	MPI_Bcast(dimensions,3,MPI_UNSIGNED,0,MPI_COMM_WORLD);	
 
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
 
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
 		p_info->header_size = dimensions[2];
+
+		printf("rank: %d, dimensions0: %d, dimensions1: %d, dimensions2: %d\n",rank,dimensions[0],dimensions[1],dimensions[2]);	
 
 		if (rank == 0)
 			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
@@ -253,61 +301,49 @@ int main(int argc, char *argv[]){
 
 		p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
 		originalSize = p_info->width * 3;
-		OriginalPlusPadding = originalSize + p_info->padding;
+
+		originalPlusPadding = originalSize + p_info->padding;
 
 		calculateLocalArray(&local_n,&my_first_i,&rank,&special);
 
-		printf("rank: %u, my_first_i: %u, local_n: %u\n",rank,my_first_i,local_n);	
-
+		printf("rank: %u, local_n: %u\n",rank,local_n);	
+		
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
 		for (i = 0; i < local_n; i++)
 			encodedSize[i] = 0;
 
-		f = fopen(argv[1],"rb");
+		imageInBytes = (char *) malloc(originalPlusPadding * local_n);
+		encodedImage = (char *) malloc(originalSize * 2 * local_n);
 
-		if (f != NULL){
+		memset(imageInBytes,'\0',originalPlusPadding * local_n);
+		memset(encodedImage,'\0',originalSize * 2 * local_n);
 
-			fseek(f,p_info->header_size + my_first_i,SEEK_SET);
+		imageInBytesHEAD = imageInBytes;
 
-			imageInBytes = (char *) malloc(OriginalPlusPadding);
-			encodedImage = (char *) malloc(originalSize * 2);
+		manageProcessesReadingFile(imageInBytes,argv[1],&local_n,originalPlusPadding, &my_first_i, &rank);
 
-			for (i = 0; i < local_n + special; i++){	
+		MPI_Barrier(MPI_COMM_WORLD);
 
-				if (special == 1 && i == local_n)
-					last_i = 1;
+		for (i = 0; i < local_n; i++)
+			encode(imageInBytesHEAD,originalSize,encodedImage,&encodedSize[i]);
 
-				memset(imageInBytes,'\0',OriginalPlusPadding);
-				memset(encodedImage,'\0',originalSize * 2);
+		MPI_Barrier(MPI_COMM_WORLD);
 
-				fread(imageInBytes,sizeof(char), OriginalPlusPadding, f);
+		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
 
-				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
-
-				if (encodedImage != NULL)
-					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed.grg",&rank,&last_i);
-				else {
-					printf("Could not encode for some reason\n");
-				}
-
-				memset(encodedImage,'\0',originalSize * 2);
-			}
-
-			fclose(f);
 		
 
-			if (encodedImage != NULL)
-				free(encodedImage);
-			if (imageInBytes != NULL)
-				free(imageInBytes);
-			if (encodedSize != NULL)
-				free(encodedSize);
-		}
+		
+
+			//if (encodedImage != NULL)
+			//	free(encodedImage);
+//			if (imageInBytes != NULL)
+//				free(imageInBytes);
 	}
 
-	if (p_info != NULL)
-		free(p_info);	
-
+//	if (p_info != NULL)
+//		free(p_info);	
+	MPI_Barrier(MPI_COMM_WORLD);
 	MPI_Finalize();
 
 	return 0;
