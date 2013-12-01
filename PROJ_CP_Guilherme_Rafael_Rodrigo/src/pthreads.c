@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
 #include <string.h>
 #include "timer.h"
 
@@ -12,6 +11,13 @@
 // Final Project
 // Rodrigo Barbieri, Rafael Machado and Guilherme Baldo
 // MPI version
+
+/* 
+ * Grupo:
+ * 000000 - Guilherme Baldo
+ * 000000 - Rafael Machado
+ * 000000 - Rodrigo Barbieri
+*/
 
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
 	unsigned int height; //image height
@@ -26,6 +32,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	char* encodedImageHEAD;
 	char* imageInBytesHEAD;
 	unsigned int* encodedSize;
+	char* outputFilename;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -66,7 +73,6 @@ void initialize_header(BMP_HEADER *header){
 	header->vppm = 0;
 	header->colors = 0;
 	header->important_colors = 0;
-
 }
 
 void print_header(BMP_HEADER *header){
@@ -88,20 +94,15 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	} else {
 		printf("Could not write to file for some reason\n");
 	}
-	
 }
-
-
-
-
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
 	FILE* f = NULL;
 	
-	if (*argc != 5)
+	if (*argc != 6)
 	{ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat> <number of threads>\n",argv[0]);
+		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat> <number of threads> <output Filename>\n",argv[0]);
 		fflush(stdout);
 	} 
 	else 
@@ -113,6 +114,8 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 		p_info->p = strtol(argv[4],NULL,10);
 		if (p_info->p < 1)
 			exit(0);
+
+		p_info->outputFilename = argv[5];
 
 		p_info->decode = *argv[2];
 
@@ -176,7 +179,6 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 	}
 
 	*encodedSize = outputIndex;
-	
 }
 
 void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
@@ -197,7 +199,6 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 {
 	int i;
 	FILE* input = NULL;
-	int read;
 
 	input = fopen(filename,"rb");
 
@@ -205,15 +206,12 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 
 		fseek(input,p_info->header_size + (*my_first_i * size),SEEK_SET);
 		for (i = 0; i < *local_n ; i++){	
-			read = fread(bytes,sizeof(char), size, input);
-//			printf("read: %d, rank: %d, i: %d, size: %u, my_first_i: %u\n",read,*rank,i,size,*my_first_i);
-			writeToFile(bytes,&size,"teste-input.bmp");
+			fread(bytes,sizeof(char), size, input);
 			bytes += size;
 		}
 		fclose(input);
 	} else
 		printf("Rank: %d, Could not open file for reading\n",*rank);
-
 }
 
 void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* local_n,unsigned int block_size, unsigned int* size_list, int* rank){
@@ -232,7 +230,6 @@ void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* loca
 		fclose(output);
 	} else 
 		printf("Rank: %d, Could not write to file\n",*rank);
-
 }
 
 void* threadFunction(void* rank){
@@ -246,7 +243,7 @@ void* threadFunction(void* rank){
 
 	encodedImage = p_info->encodedImageHEAD + (my_first_i * (p_info->originalSize * 2)) ;
 	imageInBytes = p_info->imageInBytesHEAD + (my_first_i * p_info->originalPlusPadding);
-//	printf("my_first_i: %d, local_n: %d, my_rank: %d\n",my_first_i,local_n,my_rank);
+
 	for (i = my_first_i; i < local_n + my_first_i; i++){
 		encode(imageInBytes,p_info->originalSize,encodedImage,&p_info->encodedSize[i]);
 		imageInBytes += p_info->originalPlusPadding;
@@ -276,12 +273,10 @@ int main(int argc, char *argv[]){
 	BMP_HEADER header;
 	pthread_t* thread_handles;
 
-
 	p_info = (ProgramInfo*) malloc(sizeof(ProgramInfo)); //allocates ProgramInfo structure
 
 	rank = 0;
 	my_first_i = 0;
-
 
 	if (rank == 0){
 
@@ -290,9 +285,7 @@ int main(int argc, char *argv[]){
 
 		if (f != NULL){
 			fread(&header,sizeof(BMP_HEADER),1,f);
-//			print_header(&header);
 			fclose(f);
-			
 		}
 		dimensions[0] = (unsigned int) header.width;
 		dimensions[1] = (unsigned int) header.height;
@@ -316,13 +309,9 @@ int main(int argc, char *argv[]){
 		originalPlusPadding = originalSize + p_info->padding;
 		local_n = p_info->height;
 
-//		printf("rank: %d, dimensions0: %d, dimensions1: %d, dimensions2: %d\n",rank,dimensions[0],dimensions[1],dimensions[2]);	
-
 		if (rank == 0){
-			remove("compressed.grg");
-			remove("teste-input.bmp");
-			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
-			writeToFile((char*) &header,&p_info->header_size,"teste-input.bmp");
+			remove(p_info->outputFilename);
+			writeToFile((char*) &header,&p_info->header_size,p_info->outputFilename);
 		}
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * p_info->height);
@@ -340,17 +329,14 @@ int main(int argc, char *argv[]){
 
 		manageProcessesReadingFile(imageInBytes,argv[1],&local_n,originalPlusPadding, &my_first_i, &rank);
 
-
 		p_info->imageInBytesHEAD = imageInBytesHEAD;
 		p_info->encodedImageHEAD = encodedImageHEAD;
 		p_info->originalSize = originalSize;
 		p_info->originalPlusPadding = originalPlusPadding;
 		p_info->encodedSize = encodedSize;
 
-
 		for (t = 0 ; t < p_info->repeat; t++){
 	
-
 			GET_TIME(start);
 
 			for (i = 0; i < p_info->p; i++)
@@ -359,27 +345,24 @@ int main(int argc, char *argv[]){
 			for (i = 0; i < p_info->p; i++)
 				pthread_join(thread_handles[i],NULL);
 
-
 			GET_TIME(end);
-
-//			printf("rank: %d, time: %lf\n",rank, end - start);
 
 			if (end - start < min)
 				min = end - start;
 		}		
 
-		printf("rank: %d, min: %lf\n",rank, min);
+		printf("PTHREADS: %lf\n",min);
 
 		encodedImage = encodedImageHEAD;
 		imageInBytes = imageInBytesHEAD;
 		
-		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
+		manageProcessesWritingToFile(encodedImage,p_info->outputFilename,&local_n,originalSize * 2,encodedSize,&rank);
 
 		encodedImage = encodedImageHEAD;
 		imageInBytes = imageInBytesHEAD;
 		
+		system("ps -e -L -o cmd,pid,tid,psr,pcpu,pmem | grep pthreads | grep -v grep");
 
-		
 		if (encodedImage != NULL)
 			free(encodedImage);
 		if (imageInBytes != NULL)
@@ -390,8 +373,6 @@ int main(int argc, char *argv[]){
 
 	if (p_info != NULL)
 		free(p_info);
-
-
 
 	return 0;
 }

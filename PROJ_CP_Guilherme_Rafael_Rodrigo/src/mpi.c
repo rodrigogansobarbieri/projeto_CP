@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
-#include <time.h>
 #include <string.h>
 
 #pragma pack(1)
@@ -12,6 +11,13 @@
 // Rodrigo Barbieri, Rafael Machado and Guilherme Baldo
 // MPI version
 
+/* 
+ * Grupo:
+ * 000000 - Guilherme Baldo
+ * 000000 - Rafael Machado
+ * 000000 - Rodrigo Barbieri
+*/
+
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
 	unsigned int height; //image height
 	unsigned int width; //image width
@@ -20,6 +26,7 @@ typedef struct ProgramInfo { //Structure responsible for maintaining program inf
 	char decode; //whether the user chose to print the sorted array
 	int padding;
 	int repeat;
+	char* outputFilename;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -60,7 +67,6 @@ void initialize_header(BMP_HEADER *header){
 	header->vppm = 0;
 	header->colors = 0;
 	header->important_colors = 0;
-
 }
 
 void print_header(BMP_HEADER *header){
@@ -82,20 +88,15 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	} else {
 		printf("Could not write to file for some reason\n");
 	}
-	
 }
-
-
-
-
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
 	FILE* f = NULL;
 	
-	if (*argc != 4)
+	if (*argc != 5)
 	{ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat>\n",argv[0]);
+		printf("Usage: %s <file name> <decode? Y/N> <Times to repeat> <output filename>\n",argv[0]);
 		fflush(stdout);
 	} 
 	else 
@@ -112,7 +113,7 @@ FILE* validation(int* argc, char* argv[]){ //validates several conditions before
 			fflush(stdout);
 		}
 	}
-	
+
 	return f;
 }
 
@@ -164,7 +165,6 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 	}
 
 	*encodedSize = outputIndex;
-	
 }
 
 void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
@@ -185,7 +185,6 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 {
 	int count = 0, i;
 	FILE* input = NULL;
-	int read;
 	while (count != *rank)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
 
@@ -195,9 +194,7 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 
 		fseek(input,p_info->header_size + (*my_first_i * size),SEEK_SET);
 		for (i = 0; i < *local_n ; i++){	
-			read = fread(bytes,sizeof(char), size, input);
-//			printf("read: %d, rank: %d, i: %d, size: %u, my_first_i: %u\n",read,*rank,i,size,*my_first_i);
-			writeToFile(bytes,&size,"teste-input.bmp");
+			fread(bytes,sizeof(char), size, input);
 			bytes += size;
 		}
 		fclose(input);
@@ -208,7 +205,6 @@ void manageProcessesReadingFile(char* bytes,char* filename, unsigned int* local_
 	MPI_Bcast(&count,1,MPI_INT,(int)*rank,MPI_COMM_WORLD);
 	while(count < p_info->p)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
-
 }
 
 void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* local_n,unsigned int block_size, unsigned int* size_list, int* rank){
@@ -235,7 +231,6 @@ void manageProcessesWritingToFile(char* bytes,char* filename, unsigned int* loca
 	MPI_Bcast(&count,1,MPI_INT,(int)*rank,MPI_COMM_WORLD);
 	while (count < p_info->p)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
-
 }
 
 int main(int argc, char *argv[]){
@@ -267,6 +262,8 @@ int main(int argc, char *argv[]){
 
 	p_info->p = p;
 
+	p_info->outputFilename = argv[4];
+
 	if (rank == 0){
 
 		initialize_header(&header);
@@ -274,9 +271,7 @@ int main(int argc, char *argv[]){
 
 		if (f != NULL){
 			fread(&header,sizeof(BMP_HEADER),1,f);
-//			print_header(&header);
 			fclose(f);
-			
 		}
 		dimensions[0] = (unsigned int) header.width;
 		dimensions[1] = (unsigned int) header.height;
@@ -284,7 +279,7 @@ int main(int argc, char *argv[]){
 		dimensions[3] = (unsigned int) p_info->repeat;
 	}
 
-	if (header.reserved1 != 0 || header.reserved2 != 0)
+	if (rank == 0 && (header.reserved1 != 0 || header.reserved2 != 0))
 		printf("Your image is either malformed or your compiler is not reading pragma pack!\n");
 
 	MPI_Bcast(dimensions,4,MPI_UNSIGNED,0,MPI_COMM_WORLD);	
@@ -301,13 +296,9 @@ int main(int argc, char *argv[]){
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-//		printf("rank: %d, dimensions0: %d, dimensions1: %d, dimensions2: %d\n",rank,dimensions[0],dimensions[1],dimensions[2]);	
-
 		if (rank == 0){
-			remove("compressed.grg");
-			remove("teste-input.bmp");
-			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
-			writeToFile((char*) &header,&p_info->header_size,"teste-input.bmp");
+			remove(p_info->outputFilename);
+			writeToFile((char*) &header,&p_info->header_size,p_info->outputFilename);
 		}
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
@@ -330,7 +321,6 @@ int main(int argc, char *argv[]){
 		MPI_Barrier(MPI_COMM_WORLD);
 
 		for (t = 0 ; t < p_info->repeat; t++){
-	
 
 			encodedImage = encodedImageHEAD;
 			imageInBytes = imageInBytesHEAD;
@@ -345,29 +335,24 @@ int main(int argc, char *argv[]){
 
 			end = MPI_Wtime();
 
-//			printf("rank: %d, time: %lf\n",rank, end - start);
-
 			if (end - start < min)
 				min = end - start;
 		}		
 
-//		printf("rank: %d, min: %lf\n",rank, min);
-
-		MPI_Barrier(MPI_COMM_WORLD);
-
 		MPI_Reduce(&min,&total,1,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD);
 
 		if (rank == 0)
-			printf("rank: %d, total: %lf\n",rank, total);
+			printf("MPI: %lf\n",total);
 
 		encodedImage = encodedImageHEAD;
 
-		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
+		manageProcessesWritingToFile(encodedImage,p_info->outputFilename,&local_n,originalSize * 2,encodedSize,&rank);
 
 		encodedImage = encodedImageHEAD;
 		imageInBytes = imageInBytesHEAD;
-		
 
+		if (rank == 0)
+			system("ps -e -L -o cmd,pid,tid,psr,pcpu,pmem | grep mpi | grep -v grep | grep -v mpiexec");
 		
 		if (encodedImage != NULL)
 			free(encodedImage);
