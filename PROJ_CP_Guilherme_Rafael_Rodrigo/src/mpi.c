@@ -274,7 +274,7 @@ int main(int argc, char *argv[]){
 
 		if (f != NULL){
 			fread(&header,sizeof(BMP_HEADER),1,f);
-			print_header(&header);
+//			print_header(&header);
 			fclose(f);
 			
 		}
@@ -283,6 +283,9 @@ int main(int argc, char *argv[]){
 		dimensions[2] = (unsigned int) header.offset_start;
 		dimensions[3] = (unsigned int) p_info->repeat;
 	}
+
+	if (header.reserved1 != 0 || header.reserved2 != 0)
+		printf("Your image is either malformed or your compiler is not reading pragma pack!\n");
 
 	MPI_Bcast(dimensions,4,MPI_UNSIGNED,0,MPI_COMM_WORLD);	
 
@@ -342,13 +345,13 @@ int main(int argc, char *argv[]){
 
 			end = MPI_Wtime();
 
-			printf("rank: %d, time: %lf\n",rank, end - start);
+//			printf("rank: %d, time: %lf\n",rank, end - start);
 
 			if (end - start < min)
 				min = end - start;
 		}		
 
-		printf("rank: %d, min: %lf\n",rank, min);
+//		printf("rank: %d, min: %lf\n",rank, min);
 
 		MPI_Barrier(MPI_COMM_WORLD);
 

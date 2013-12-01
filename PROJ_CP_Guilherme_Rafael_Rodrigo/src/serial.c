@@ -255,7 +255,7 @@ int main(int argc, char *argv[]){
 
 		if (f != NULL){
 			fread(&header,sizeof(BMP_HEADER),1,f);
-			print_header(&header);
+//			print_header(&header);
 			fclose(f);
 			
 		}
@@ -263,6 +263,10 @@ int main(int argc, char *argv[]){
 		dimensions[1] = (unsigned int) header.height;
 		dimensions[2] = (unsigned int) header.offset_start;
 	}
+
+	if (header.reserved1 != 0 || header.reserved2 != 0)
+		printf("Your image is either malformed or your compiler is not reading pragma pack!\s");
+
 
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
 

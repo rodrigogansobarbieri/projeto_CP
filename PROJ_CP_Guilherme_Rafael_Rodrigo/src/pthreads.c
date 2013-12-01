@@ -246,9 +246,8 @@ void* threadFunction(void* rank){
 
 	encodedImage = p_info->encodedImageHEAD + (my_first_i * (p_info->originalSize * 2)) ;
 	imageInBytes = p_info->imageInBytesHEAD + (my_first_i * p_info->originalPlusPadding);
-
-	for (i = my_first_i; i < local_n * my_rank; i++){
-		printf("rank: %d, encodedSize: %u\n", my_rank,p_info->encodedSize[i]);
+//	printf("my_first_i: %d, local_n: %d, my_rank: %d\n",my_first_i,local_n,my_rank);
+	for (i = my_first_i; i < local_n + my_first_i; i++){
 		encode(imageInBytes,p_info->originalSize,encodedImage,&p_info->encodedSize[i]);
 		imageInBytes += p_info->originalPlusPadding;
 		encodedImage += p_info->originalSize * 2;
@@ -291,7 +290,7 @@ int main(int argc, char *argv[]){
 
 		if (f != NULL){
 			fread(&header,sizeof(BMP_HEADER),1,f);
-			print_header(&header);
+//			print_header(&header);
 			fclose(f);
 			
 		}
@@ -302,6 +301,9 @@ int main(int argc, char *argv[]){
 	}
 
 	thread_handles = (pthread_t*) malloc (sizeof(pthread_t) * p_info->p);
+
+	if (header.reserved1 != 0 || header.reserved2 != 0)
+		printf("Your image is either malformed or your compiler is not reading pragma pack!\n");
 
 	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0 && dimensions[3] != 0){
 
@@ -327,11 +329,11 @@ int main(int argc, char *argv[]){
 		for (i = 0; i < p_info->height; i++)
 			encodedSize[i] = 0;
 
-		imageInBytes = (char *) malloc(originalPlusPadding * local_n * p_info->p);
-		encodedImage = (char *) malloc(originalSize * 2 * local_n * p_info->p);
+		imageInBytes = (char *) malloc(originalPlusPadding * local_n);
+		encodedImage = (char *) malloc(originalSize * 2 * local_n);
 
-		memset(imageInBytes,'\0',originalPlusPadding * local_n * p_info->p);
-		memset(encodedImage,'\0',originalSize * 2 * local_n * p_info->p);
+		memset(imageInBytes,'\0',originalPlusPadding * local_n);
+		memset(encodedImage,'\0',originalSize * 2 * local_n);
 
 		imageInBytesHEAD = imageInBytes;
 		encodedImageHEAD = encodedImage;
@@ -360,7 +362,7 @@ int main(int argc, char *argv[]){
 
 			GET_TIME(end);
 
-			printf("rank: %d, time: %lf\n",rank, end - start);
+//			printf("rank: %d, time: %lf\n",rank, end - start);
 
 			if (end - start < min)
 				min = end - start;
@@ -369,7 +371,8 @@ int main(int argc, char *argv[]){
 		printf("rank: %d, min: %lf\n",rank, min);
 
 		encodedImage = encodedImageHEAD;
-
+		imageInBytes = imageInBytesHEAD;
+		
 		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
 
 		encodedImage = encodedImageHEAD;
