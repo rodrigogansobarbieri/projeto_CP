@@ -308,31 +308,30 @@ int main(int argc, char *argv[]){
 
 		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
 
+		encodedImage = encodedImageHEAD;
+		imageInBytes = imageInBytesHEAD;
+
 		if (p_info->decode == 'Y'){
 
 				writeToFile((char*) &header,&p_info->header_size,"uncompressed.bmp");
+
+				memset(imageInBytes,'\0',originalPlusPadding * local_n);
+				memset(encodedImage,'\0',originalSize * 2 * local_n);
 
 				f = fopen("compressed.grg","rb");
 				fseek(f,p_info->header_size + my_first_i,SEEK_SET);
 
 				for (i = 0; i < local_n; i++){	
-
-					memset(imageInBytes,'\0',originalPlusPadding);
-					memset(encodedImage,'\0', (originalSize * 2));
-					
 					fread(encodedImage,sizeof(char),encodedSize[i],f);
-
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
-
-					if (imageInBytes != NULL){
-						manageProcessesWritingToFile2(imageInBytes,&originalPlusPadding,"uncompressed.bmp",&rank);
-					} else {
-						printf("Could not decode for some reason\n");
-					}
+					writeToFile(imageInBytes,&originalPlusPadding,"uncompressed.bmp");
+					imageInBytes += originalPlusPadding;
+					encodedImage += encodedSize[i];
 				}
-
+				encodedImage = encodedImageHEAD;
+				imageInBytes = imageInBytesHEAD;
+	
 				fclose(f);
-			}
 
 //			if (encodedImage != NULL)
 //				free(encodedImage);
@@ -340,9 +339,9 @@ int main(int argc, char *argv[]){
 //				free(imageInBytes);
 //			if (encodedSize != NULL)
 //				free(encodedSize);
-		
+	
+		}
 	}
-
 //	if (p_info != NULL)
 //		free(p_info);
 	return 0;
