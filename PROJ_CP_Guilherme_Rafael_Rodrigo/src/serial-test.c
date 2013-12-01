@@ -297,15 +297,23 @@ int main(int argc, char *argv[]){
 
 		manageProcessesReadingFile(imageInBytes,argv[1],&local_n,originalPlusPadding, &my_first_i, &rank);
 
-		for (i = 0; i < local_n; i++)
-			encode(imageInBytesHEAD,originalSize,encodedImage,&encodedSize[i]);
+		imageInBytes = imageInBytesHEAD;
+
+		for (i = 0; i < local_n; i++){
+
+			if(i == 16){
+				printf("parar aqui");
+			}
+
+			encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
+			imageInBytes += originalPlusPadding;
+			encodedImage += encodedSize[i];
+		}
+
 
 		manageProcessesWritingToFile(encodedImage,"compressed.grg",&local_n,originalSize * 2,encodedSize,&rank);
 
 		
-
-		
-
 			//if (encodedImage != NULL)
 			//	free(encodedImage);
 //			if (imageInBytes != NULL)
