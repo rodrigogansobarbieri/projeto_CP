@@ -1,27 +1,24 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <mpi.h>
 #include <time.h>
 #include <string.h>
+
+#pragma pack(1)
 
 // UFSCar Sorocaba
 // Parallel Computing
 // Final Project
 // Rodrigo Barbieri, Rafael Machado and Guilherme Baldo
-
-
-#ifdef _WIN32
-double log2(double n){ //windows' math.h does not have log2 function  
-    return log(n) / log(2);  
-}
-#endif
+// MPI version
 
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
-	long height; //image height
-	long width; //image width
+	unsigned int height; //image height
+	unsigned int width; //image width
 	int p; //number of threads selected by the user
-	char print; //whether the user chose to print the sorted array
+	unsigned int header_size; //header size
+	char decode; //whether the user chose to print the sorted array
+	int padding;
 } ProgramInfo;
 
 ProgramInfo *p_info;
@@ -69,304 +66,150 @@ void print_header(BMP_HEADER *header){
 	printf("signature: %hd,\nsize: %ld,\nreserved1: %hd,\nreserved2: %hd,\noffset_start: %ld,\nheader_size: %ld,\nwidth: %ld,\nheight: %ld,\nplanes: %hd,\nbits: %hd,\ncompression: %ld,\nsize_data: %ld,\nhppm: %ld,\nvppm: %ld,\ncolors: %ld,\nimportant_colors: %ld\n",header->signature,header->size,header->reserved1,header->reserved2,header->offset_start,header->header_size,header->width,header->height,header->planes,header->bits,header->compression,header->size_data,header->hppm,header->vppm,header->colors,header->important_colors);
 }
 
-void read_header(BMP_HEADER *header,FILE *f){
-	fread(&(header->signature),2,1,f);
-	fread(&(header->size),4,1,f);
-	fread(&(header->reserved1),2,1,f);
-	fread(&(header->reserved2),2,1,f);
-	fread(&(header->offset_start),4,1,f);
-	fread(&(header->header_size),4,1,f);
-	fread(&(header->width),4,1,f);
-	fread(&(header->height),4,1,f);
-	fread(&(header->planes),2,1,f);
-	fread(&(header->bits),2,1,f);
-	fread(&(header->compression),4,1,f);
-	fread(&(header->size_data),4,1,f);
-	fread(&(header->hppm),4,1,f);
-	fread(&(header->vppm),4,1,f);
-	fread(&(header->colors),4,1,f);
-	fread(&(header->important_colors),4,1,f);
+void writeToFile(char* message, unsigned int* size,char* filename){
 
-}
+	FILE* output = NULL;
 
-void myMemCpy(int* dest,int* src,int size){ //copy an amount of data from one array to another
-	int i;
-	for (i = 0; i < size; i++)
-		dest[i] = src[i];
-}
-
-void writeToFile(char* encoded, long* size, int* rank){
-
-	FILE* compressedFile = NULL;
-	char FileName[30]={'\0'};
-
-	sprintf(FileName, "comp_%i.grg", *rank);
-
-	compressedFile = fopen(FileName, "ab+");
-	
-	if(NULL != compressedFile){
-		fseek(compressedFile, 0, SEEK_END);
-		fwrite(encoded, sizeof(char), *size, compressedFile);
+	while(output == NULL){
+		output = fopen(filename, "ab");
 	}
-
-	fclose(compressedFile);
+	
+	if(NULL != output){
+		fwrite(message, sizeof(char), *size, output);
+		fflush(output);
+		fclose(output);
+	} else {
+		printf("Could not write to file for some reason\n");
+	}
+	
 }
 
-void manageProcessesWritingToFile(int* rank,char* encoded,long* size){
+void manageProcessesWritingToFile(char* bytes,unsigned int* size,char* filename, int* rank,int* special){
 	int count = 0;
-	while (count != *rank){
+	while (count != *rank)
 		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
-	}
-	writeToFile(encoded, size,rank);
+//	printf("rank turn: %d\n",*rank);
+	if (*special != 1)
+		writeToFile(bytes, size,filename);
 	count++;
-	MPI_Bcast(&count,1,MPI_INT,*rank,MPI_COMM_WORLD);
-
-}
-
-
-
-int* initialize(int *n,int *p, int *t,FILE *f,int *rank){ //all processes initialize here, process 0 reads input and broadcasts, other processes just receive the broadcast
-	int r;
-	int max = 0;
-	int i = 0;
-	int *array = NULL;
-	int value;
-	int adjust = 0;
-	int message[2];
-
-	if (*rank == 0){
-		if (f != NULL){
-			fscanf(f,"%d\n",t);	//number of times to repeat the test case
-
-			if (*t != 0){ //abort if 0
-
-				fscanf(f,"%d\n",n);	//number of elements		
-
-				r = *n % *p;
-				if (r > 0)
-					adjust = (*p - r);  //adjust the number elements so it is divisible by the number of processes
-				*n = *n + adjust;
-	
-				array = malloc(sizeof(int) * *n);
+	MPI_Bcast(&count,1,MPI_INT,(int)*rank,MPI_COMM_WORLD);
+	while (count < p_info->p)
+		MPI_Bcast(&count,1,MPI_INT,count,MPI_COMM_WORLD);
 		
-				while (!feof(f) && i < (*n - adjust) && fscanf(f,"%d",&value) == 1){ //reading input to array
-					array[i] = value;
-					if (i == 0)  //detects the max value in input to adjust the array for scatter operation
-						max = value;
-					else {
-						if (value > max)
-							max = value;
-					}
-					i++;
-				}
-				max++;
-
-				for (i = 0; i < adjust ; i++) //fill the reserved space with adjustment numbers (max+1)
-					array[*n-1-i] = max;			
-
-			}
-		} else
-			*t = 0;
-		message[0] = *n;
-		message[1] = *t; //pack both values into one single message
-		MPI_Bcast(message,2,MPI_INT,0,MPI_COMM_WORLD);
-		
-	} else {
-		MPI_Bcast(message,2,MPI_INT,0,MPI_COMM_WORLD);	
-		*n = message[0]; //receive values from process 0 and unpack
-		*t = message[1];
-	}
 	
-	return array; //data read from input, NULL for all processes except process 0
-}
 
-int* divide(int *local_n,int *rank,int array[]){ //Scatter elements equally to all processes
-
-	int *local_array;
-	local_array = malloc(sizeof(int) * *local_n);
-	MPI_Scatter(array,*local_n,MPI_INT,local_array,*local_n,MPI_INT,0,MPI_COMM_WORLD);
-	return local_array;	
-}
-
-void print_local_array(int *local_n, int local_array[]){ //prints an array
-
-	int i;
-	for (i = 0; i < *local_n; i++)
-		printf("%d ",local_array[i]);
-	printf("\n");
-}
-
-int* gather(int local_n,int *p,int *rank,int local_array[]){ //customized reduce function
-
-	int i;
-	int divider = 1; //reduction tier
-	int *result;
-	int *aux = NULL; //auxiliar array for MergeSort
-	int *temp = NULL; //receive buffer
-
-	if (*rank % 2 != 1){ //odd processes will not receive messages
-		temp = malloc(sizeof(int) * local_n);
-		result = malloc(sizeof(int) * local_n*2); //the result from each iteration is the process' data joined to the data received
-		myMemCpy(result,local_array,local_n); //copies the process' data to the result array
-		aux = malloc(sizeof(int) * local_n*2);    
-	} else {
-		result = local_array;
-	}
-	for (i = 0; i < log2(*p) ; i++){ //number of times to iterate based on the number of processes for a tree-like behavior
-		if ((*rank / divider) % 2 == 1){ //if the process in the current tier is an odd number it sends its content to the process on its left
-			MPI_Send(result,local_n,MPI_INT,*rank - divider,0,MPI_COMM_WORLD);
-			break;
-		} else { //if the process in the current tier is an even number, it receives from the process on its right
-			MPI_Recv(temp,local_n,MPI_INT,(int)(*rank+pow(2,i)),0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
-			myMemCpy(result+local_n,temp,local_n); //copies to the second half of result array
-			//mergeSortPart2(result,0,(local_n*2)-1,aux); //merge both halves
-		}
-		if (i + 1 < log2(*p)){ //if there is one more step, reallocates memory, doubles data size for next round
-			local_n = local_n * 2;
-			result = realloc(result,sizeof(int) * local_n*2);
-			aux = realloc(aux,sizeof(int) * local_n*2);
-			temp = realloc(temp,sizeof(int) * local_n);
-			divider = divider * 2; //moves to next tier in reduction operation
-		}
-	}
-	if (*rank % 2 == 0){ //everyone frees allocated memory
-		free(aux);
-		free(temp);
-		if (*rank != 0) 
-			free(result); //process 0 keeps the result
-	}
-	return result;
 }
 
 FILE* validation(int* argc, char* argv[]){ //validates several conditions before effectively starting the program
 
-	char filename[50];
-	int threads;
 	FILE* f = NULL;
-	if (*argc != 3){ //validates number of arguments passed to executable, currently number of threads and file name
-		printf("Usage: %s <number of threads> <file name>\n",argv[0]);
-		fflush(stdout);
-//		exit(0);
-
-	} else {
 	
-		threads = strtol(argv[1], NULL, 10);
+	if (*argc != 3)
+	{ //validates number of arguments passed to executable, currently number of threads and file name
+		printf("Usage: %s <file name> <decode? Y/N>\n",argv[0]);
+		fflush(stdout);
+	} 
+	else 
+	{
+		p_info->decode = *argv[2];
 
-		if (threads == 0 || threads != p_info->p){ 
-			printf("Number of processes is not valid\n");
+		f = fopen(argv[1],"rb");
+
+		if (f == NULL)
+		{ //check if the file inputted exists
+			printf("File not found!");
 			fflush(stdout);
-//			exit(0);
-		} else {
-
-//		p_info->p = threads;
-
-			strcpy(filename,argv[2]);
-			f = fopen(filename,"r");
-			if (f == NULL){ //check if the file inputted exists
-				printf("File not found!");
-				fflush(stdout);
-//				exit(0);
-			}
 		}
 	}
+	
 	return f;
-
 }
 
-void calculateLocalArray(long* local_n,long* my_first_i,int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
-	long div = p_info->height / p_info->p;
-	long r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
+void decode (char* message, unsigned int encodedWidth, unsigned int width, char* output){
+	unsigned int i = 0,j = 0;
+	unsigned int count = 0;
+	char* color = NULL;
+	int outputIndex = 0;
+		
+	while (i < encodedWidth){
+		count = (unsigned int) message[i] & 0x000000FF;
+
+		color = &message[i+1];	
+
+		while (j < count){
+			output[outputIndex] = color[0];
+			output[++outputIndex] = color[1];
+			output[++outputIndex] = color[2];	
+			j++;
+			outputIndex++;
+		}
+		j = 0;
+		i += 4;		
+	}
+}
+
+void encode (char* message, unsigned int width, char* output, unsigned int* encodedSize){
+	unsigned int i = 0;
+	unsigned int count = 1;
+	unsigned int outputIndex = 0;
+	
+	while (i < width){
+
+		if (message[i] == message[i+3] && 
+			message[i+1] == message[i+4] && 
+			message[i+2] == message[i+5] && 
+			count < 255 && (i + 3 < width)) {
+			count++;
+		}
+		else {
+			output[outputIndex] = (char) count & 0x000000FF;
+			output[++outputIndex] = message[i];
+			output[++outputIndex] = message[i+1];
+			output[++outputIndex] = message[i+2];
+			outputIndex++;
+			count = 1;
+		}
+		i += 3;
+	}
+
+	*encodedSize = outputIndex;
+	
+}
+
+void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* rank,int* special){ //calculates local number of elements and starting index for a specific rank based on total number of elements
+	unsigned int div = p_info->height / p_info->p;
+	int r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
 	if (*rank < r){
 		*local_n = div + 1;
 		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
 			*my_first_i = *rank * *local_n;
 	} else {
+		*special = 1;
 		*local_n = div;
 		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
 			*my_first_i = *rank * *local_n + r;
 	}
 }
 
-
-int encode (char *message, int size, int width, int height, char *output){
-	int i = 0,j = 0;
-	int count = 1;
-	int outputIndex = 0;
-	
-	int countBytesPerLine = 0;
-	int bytesPerLine = width*3;
-	int bytesPadding = width%4;
-		
-	while (j < height) {
-		while (countBytesPerLine < bytesPerLine){
-
-			if (message[i] == message[i+3] && message[i+1] == message[i+4] && message[i+2] == message[i+5] && count < 255) {
-				count++;
-			}
-			else {
-				output[outputIndex] = (char) count & 0xFF;
-				output[++outputIndex] = message[i];
-				output[++outputIndex] = message[i+1];
-				output[++outputIndex] = message[i+2];
-				outputIndex++;
-				count = 1;
-			}
-			countBytesPerLine += 3;
-			i += 3;
-		}
-		countBytesPerLine = 0;
-		j++;
-		i += bytesPadding;
-	}
-	
-	return outputIndex;
-	
-}
-
-char* readAndEncode(int* rank,long* local_n,char* filename,long* my_first_i,long* encodedSize){
-	FILE *input = NULL;
-	long bufferSize; 
-	char *buffer = NULL; 
-	char *encoded = NULL;
-	input = fopen(filename,"r");
-	fseek(input,54 + *my_first_i,SEEK_SET);
-	if (input != NULL){
-		bufferSize = sizeof(char) * 3 * (p_info->width);
-		buffer = (char *) malloc(bufferSize);
-		encoded = (char *) malloc(bufferSize * 2);
-		memset(buffer,'0',bufferSize);
-		memset(encoded,'0',bufferSize * 2);
-
-		fread(buffer,1,bufferSize,input);		
-		*encodedSize = encode(buffer,bufferSize,p_info->width,*local_n,encoded);
-		encoded = (char*) realloc(encoded,sizeof(char) * *encodedSize);
-	} else {
-		printf("Could not reopen file for some reason\n");
-	}
-	return encoded;
-
-}
-
 int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
-	FILE *output = NULL;
-	char filename[50];
-	char print = 'Y';
-	int rank,p,t;
-	long local_n,my_first_i,n;
-	int *array = NULL;
-	int *aux;
-	int *result;
-	int *local_array;
-	double start = 0;
-	double end = 0;
-	double total = 0;
-	double max = 0;
-	int i;
-	long encodedSize = 0;
-	long dimensions[2];
-	char* encoded = NULL;
+	int rank,p;
+	unsigned int local_n,my_first_i,t;
+//	double start = 0;
+//	double end = 0;
+//	double total = 0;
+//	double max = 0;
+	unsigned int i;
+	unsigned int* encodedSize = NULL;
+	unsigned int dimensions[3];
+	char* encodedImage = NULL;
+	unsigned int originalSize;
+	char* imageInBytes = NULL;
+	unsigned int OriginalPlusPadding;
+	BMP_HEADER header;
+	int special = 0;
+	int last_i = 0;
 
 	MPI_Init(NULL,NULL);
 
@@ -377,88 +220,95 @@ int main(int argc, char *argv[]){
 
 	p_info->p = p;
 
-	BMP_HEADER header;
-	initialize_header(&header);
-
 	if (rank == 0){
+
+		initialize_header(&header);
 		f = validation(&argc,argv);
+
 		if (f != NULL){
-			read_header(&header,f);
+			fread(&header,sizeof(BMP_HEADER),1,f);
 			print_header(&header);
 			fclose(f);
-			dimensions[0] = header.width;
-			dimensions[1] = header.height;
-		} else {
-			dimensions[0] = 0;
-			dimensions[1] = 0;
+			
 		}
-	}
-	
+		dimensions[0] = (unsigned int) header.width;
+		dimensions[1] = (unsigned int) header.height;
+		dimensions[2] = (unsigned int) header.offset_start;
 
+		
+	}
 
 	MPI_Bcast(dimensions,2,MPI_LONG,0,MPI_COMM_WORLD);	
 
-	if (dimensions[0] != 0 && dimensions[1] != 0){
-
+	if (dimensions[0] != 0 && dimensions[1] != 0 && dimensions[2] != 0){
 
 		p_info->width = dimensions[0];
 		p_info->height = dimensions[1];
+		p_info->header_size = dimensions[2];
 
-		calculateLocalArray(&local_n,&my_first_i,&rank);
-
-		printf("rank: %d, my_first_i: %ld, local_n: %ld\n",rank,my_first_i,local_n);	
-
-		encoded = readAndEncode(&rank,&local_n,argv[2],&my_first_i,&encodedSize);
-
-		if (encoded != NULL){
-			manageProcessesWritingToFile(&rank,encoded,&encodedSize);
-		} else {
-			printf("Could not encode for some reason\n");
-		}
-		
-
-
-/*
-	if (rank == 0){
-
-		array = initialize(&n,&p,&t,f,&rank); //every process gets t and n, process 0 reads input
-		if (rank == 0 && t == 0){
-			printf("Either input file was not found or there are no test cases!\n");
-		}
-		while (t != 0){ //repeat until end signal is reached
-			local_n = n/p;
-			for (i = 0; i < t; i++){
-
-				MPI_Barrier(MPI_COMM_WORLD);
-				start = MPI_Wtime(); //starting benchmark
-				local_array = divide(&local_n,&rank,array); //scatter input into processes
-				aux = malloc(sizeof(int) * local_n); //auxiliar array for MergeSort
-				//MergeSort(local_array, 0, local_n-1,aux); //local MergeSort
-				free(aux);
-				result = gather(local_n,&p,&rank,local_array); //joins all local arrays into process 0
-				free(local_array);
-				end = MPI_Wtime(); //ending benchmark
-		
-				total = end - start;
-				MPI_Reduce(&total,&max,1,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD); //maximum time elapsed among all processes 
-				if (rank == 0){ //process 0 handles output
-					if (i == 0 && print == 'Y') //result is printed only once
-						print_local_array(&n,result); 
-					free(result);
-					printf("%f\n",max); //current test case execution duration (seconds)
-				}		
-			}
-			free(array);
-			array = initialize(&n,&p,&t,f,&rank); //loads new test case
-		}
-		if (rank == 0 && f != NULL)
-			fclose(f); //when all test cases are completed, close the file
-
-	} else {
 		if (rank == 0)
-			printf("Number of processes is not power of two!\n");
-	*/
+			writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
+
+		MPI_Barrier(MPI_COMM_WORLD);
+
+		p_info->padding = (p_info->width * 3) % 4 == 0 ? 0 : (4 - ((p_info->width * 3) % 4));
+		originalSize = p_info->width * 3;
+		OriginalPlusPadding = originalSize + p_info->padding;
+
+		calculateLocalArray(&local_n,&my_first_i,&rank,&special);
+
+		printf("rank: %u, my_first_i: %u, local_n: %u\n",rank,my_first_i,local_n);	
+
+		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
+		for (i = 0; i < local_n; i++)
+			encodedSize[i] = 0;
+
+		f = fopen(argv[1],"rb");
+
+		if (f != NULL){
+
+			fseek(f,p_info->header_size + my_first_i,SEEK_SET);
+
+			imageInBytes = (char *) malloc(OriginalPlusPadding);
+			encodedImage = (char *) malloc(originalSize * 2);
+
+			for (i = 0; i < local_n + special; i++){	
+
+				if (special == 1 && i == local_n)
+					last_i = 1;
+
+				memset(imageInBytes,'\0',OriginalPlusPadding);
+				memset(encodedImage,'\0',originalSize * 2);
+
+				fread(imageInBytes,sizeof(char), OriginalPlusPadding, f);
+
+				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
+
+				if (encodedImage != NULL)
+					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed.grg",&rank,&last_i);
+				else {
+					printf("Could not encode for some reason\n");
+				}
+
+				memset(encodedImage,'\0',originalSize * 2);
+			}
+
+			fclose(f);
+		
+
+			if (encodedImage != NULL)
+				free(encodedImage);
+			if (imageInBytes != NULL)
+				free(imageInBytes);
+			if (encodedSize != NULL)
+				free(encodedSize);
+		}
 	}
+
+	if (p_info != NULL)
+		free(p_info);	
+
 	MPI_Finalize();
+
 	return 0;
 }

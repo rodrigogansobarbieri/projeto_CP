@@ -9,6 +9,7 @@
 // Parallel Computing
 // Final Project
 // Rodrigo Barbieri, Rafael Machado and Guilherme Baldo
+// Serial version
 
 typedef struct ProgramInfo { //Structure responsible for maintaining program information and state
 	unsigned int height; //image height
@@ -82,7 +83,7 @@ void writeToFile(char* message, unsigned int* size,char* filename){
 	
 }
 
-void manageProcessesWritingToFile(char* bytes,unsigned int* size,char* filename){
+void manageProcessesWritingToFile(char* bytes,unsigned int* size,char* filename,int* rank){
 
 	writeToFile(bytes, size,filename);
 }
@@ -163,9 +164,9 @@ void encode (char* message, unsigned int width, char* output, unsigned int* enco
 	
 }
 
-void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, unsigned int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
+void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, int* rank){ //calculates local number of elements and starting index for a specific rank based on total number of elements
 	unsigned int div = p_info->height / p_info->p;
-	unsigned int r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
+	int r = p_info->height % p_info->p; //divides evenly between all threads, firstmost threads get more elements if remainder is more than zero
 	if (*rank < r){
 		*local_n = div + 1;
 		if (my_first_i != NULL) //allows my_first_i parameter to be NULL instead of an address
@@ -180,8 +181,8 @@ void calculateLocalArray(unsigned int* local_n,unsigned int* my_first_i, unsigne
 int main(int argc, char *argv[]){
 
 	FILE *f = NULL;
-	unsigned int rank;
-	unsigned int local_n,my_first_i;
+	int rank;
+	unsigned int local_n,my_first_i,t;
 //	double start = 0;
 //	double end = 0;
 //	double total = 0;
@@ -226,7 +227,7 @@ int main(int argc, char *argv[]){
 
 		calculateLocalArray(&local_n,&my_first_i,&rank);
 
-		writeToFile((char*) &header,&p_info->header_size,"compressed.grg");
+		writeToFile((char*) &header,&p_info->header_size,"compressed-shit.grg");
 
 		encodedSize = (unsigned int*) malloc (sizeof(unsigned int) * local_n);
 		for (i = 0; i < local_n; i++)
@@ -251,7 +252,7 @@ int main(int argc, char *argv[]){
 				encode(imageInBytes,originalSize,encodedImage,&encodedSize[i]);
 
 				if (encodedImage != NULL)
-					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed.grg");
+					manageProcessesWritingToFile((char*) encodedImage,&encodedSize[i],"compressed-shit.grg",&rank);
 				else {
 					printf("Could not encode for some reason\n");
 				}
@@ -278,7 +279,7 @@ int main(int argc, char *argv[]){
 					decode(encodedImage,encodedSize[i],originalSize,imageInBytes);
 
 					if (imageInBytes != NULL){
-						manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp");
+						manageProcessesWritingToFile(imageInBytes,&OriginalPlusPadding,"uncompressed.bmp",&rank);
 					} else {
 						printf("Could not decode for some reason\n");
 					}
